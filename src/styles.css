@@ -695,6 +695,64 @@ main {
   background: #fff7f5;
 }
 
+.demo-mode-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+  gap: 18px;
+  align-items: center;
+  margin: 26px 0;
+  padding: clamp(18px, 3vw, 26px);
+  border: 1px solid #b8e7cd;
+  border-radius: 8px;
+  background: #eef9f2;
+  box-shadow: 0 12px 34px rgba(14, 122, 79, 0.1);
+}
+
+.demo-mode-copy h2,
+.demo-mode-copy p {
+  margin: 0;
+}
+
+.demo-mode-copy h2 {
+  font-size: clamp(1.45rem, 3vw, 2.1rem);
+  line-height: 1.1;
+}
+
+.demo-mode-copy p {
+  max-width: 760px;
+  margin-top: 10px;
+  color: #405048;
+  line-height: 1.5;
+}
+
+.demo-facts,
+.demo-mode-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.demo-facts {
+  margin-top: 16px;
+}
+
+.demo-facts span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid #cde8d7;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #244b38;
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.demo-mode-actions {
+  justify-content: flex-end;
+}
+
 .ops-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.82fr) minmax(280px, 0.82fr);
@@ -1483,6 +1541,7 @@ main {
   .split-section,
   .trust-section,
   .access-section,
+  .demo-mode-panel,
   .hero-grid,
   .ops-grid,
   .workflow-grid,
@@ -1525,6 +1584,7 @@ main {
   .landing-nav,
   .topbar-actions,
   .toolbar-actions,
+  .demo-mode-actions,
   .hero-actions {
     justify-content: flex-start;
   }
@@ -1624,6 +1684,7 @@ main {
   .landing-hero,
   .landing-section,
   .hero-grid,
+  .demo-mode-panel,
   .ops-grid,
   .progress-strip,
   .workflow-grid,

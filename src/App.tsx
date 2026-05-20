@@ -28,7 +28,7 @@ import {
   UploadCloud,
   Zap
 } from "lucide-react";
-import { demoScenarios } from "./demoData";
+import { demoScenarios, type DemoScenario } from "./demoData";
 import {
   analyzeRoofReadiness,
   conditionFlagLabels,
@@ -82,6 +82,8 @@ const statusTheme: Record<RecommendationStatus, { tone: string; icon: ReactNode 
   "inspection-first": { tone: "neutral", icon: <Info size={18} /> }
 };
 
+const defaultDemoScenarioId = "replacement-first";
+
 function App() {
   if (window.location.pathname.startsWith("/app")) {
     return <ReadinessApp />;
@@ -108,7 +110,7 @@ function LandingPage() {
           <a href="#how-it-works">How it works</a>
           <a href="#faq">FAQ</a>
           <a className="button secondary" href="/app">
-            Open builder
+            Open live demo
           </a>
         </nav>
       </header>
@@ -124,11 +126,11 @@ function LandingPage() {
             </p>
             <div className="hero-actions">
               <a className="button primary" href="/app">
-                Build a report
+                Launch prefilled demo
                 <ArrowRight size={18} />
               </a>
-              <a className="button ghost" href="/app?demo=replacement-first#workflow">
-                See replacement-first demo
+              <a className="button ghost" href="/app?blank=1#workflow">
+                Start blank report
               </a>
             </div>
             <div className="promise-strip">
@@ -241,11 +243,11 @@ function LandingPage() {
           </div>
           <div className="access-actions">
             <a className="button primary" href="/app">
-              Open report builder
+              Launch prefilled demo
               <ArrowRight size={18} />
             </a>
-            <a className="button secondary" href="/app?demo=replacement-first#workflow">
-              Run a buyer demo
+            <a className="button secondary" href="/app?blank=1#workflow">
+              Start blank report
             </a>
           </div>
         </section>
@@ -371,13 +373,23 @@ function ReadinessApp() {
   const [company, setCompany] = useState<CompanyProfile>(defaultCompanyProfile);
   const [savedReports, setSavedReports] = useState<SavedReadinessReport[]>([]);
   const [activeReport, setActiveReport] = useState<SavedReadinessReport | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [activeDemoScenarioId, setActiveDemoScenarioId] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string>("");
   const [notice, setNotice] = useState<Notice>(null);
   const [limitsAccepted, setLimitsAccepted] = useState(false);
 
   const visionConfigured = isVisionAnalysisConfigured();
   const readinessChecks = useMemo(() => getReadinessChecks(photos, details), [photos, details]);
-  const stats = useMemo(() => buildDashboardStats(savedReports), [savedReports]);
+  const dashboardReports = useMemo(
+    () => (isDemoMode && activeReport ? [activeReport, ...savedReports] : savedReports),
+    [activeReport, isDemoMode, savedReports]
+  );
+  const stats = useMemo(() => buildDashboardStats(dashboardReports), [dashboardReports]);
+  const activeDemoScenario = useMemo(
+    () => demoScenarios.find((scenario) => scenario.id === activeDemoScenarioId) ?? null,
+    [activeDemoScenarioId]
+  );
 
   useEffect(() => {
     const reports = loadSavedReports();
@@ -385,20 +397,29 @@ function ReadinessApp() {
     const params = new URLSearchParams(window.location.search);
     const reportId = params.get("report");
     const demoId = params.get("demo");
+    const shouldStartBlank = params.get("blank") === "1";
     const linkedReport = reportId ? reports.find((report) => report.id === reportId) : null;
 
     setSavedReports(reports);
     setCompany(profile);
 
-    if (demoId && !linkedReport) {
-      applyDemoScenario(demoId);
-    }
-
     if (linkedReport) {
       setActiveReport(linkedReport);
       setDetails(linkedReport.details);
       setLimitsAccepted(true);
+      setIsDemoMode(false);
+      setActiveDemoScenarioId(null);
       setNotice({ type: "success", message: "Loaded saved report from this browser." });
+      return;
+    }
+
+    if (!shouldStartBlank) {
+      loadDemoScenario(demoId || defaultDemoScenarioId, {
+        companyOverride: profile,
+        generateReport: true,
+        updateUrl: Boolean(demoId),
+        message: "Prefilled demo loaded with sample photos, job details, and a generated report."
+      });
     }
   }, []);
 
@@ -471,18 +492,88 @@ function ReadinessApp() {
   }
 
   function applyDemoScenario(scenarioId: string) {
-    const scenario = demoScenarios.find((item) => item.id === scenarioId);
+    loadDemoScenario(scenarioId, {
+      generateReport: true,
+      updateUrl: true,
+      message: "Demo case loaded and report generated."
+    });
+  }
+
+  function loadDemoScenario(
+    scenarioId: string,
+    options: {
+      companyOverride?: CompanyProfile;
+      generateReport?: boolean;
+      updateUrl?: boolean;
+      message?: string;
+    } = {}
+  ) {
+    const scenario =
+      demoScenarios.find((item) => item.id === scenarioId) ??
+      demoScenarios.find((item) => item.id === defaultDemoScenarioId);
     if (!scenario) return;
 
     photos.forEach((photo) => {
       if (photo.previewUrl.startsWith("blob:")) URL.revokeObjectURL(photo.previewUrl);
     });
-    setDetails(scenario.details);
-    setPhotos(scenario.photos);
+
+    const demoDetails = clonePropertyDetails(scenario.details);
+    const demoPhotos = scenario.photos.map((photo) => ({ ...photo }));
+    const demoCompany = options.companyOverride ?? company;
+
+    setDetails(demoDetails);
+    setPhotos(demoPhotos);
     setActiveReport(null);
+    setIsDemoMode(true);
+    setActiveDemoScenarioId(scenario.id);
     setLimitsAccepted(true);
-    setNotice({ type: "success", message: `${scenario.label} sample loaded. Run the analysis to generate the report.` });
-    clearReportUrl();
+    setFileError("");
+
+    if (options.generateReport) {
+      const report = analyzeRoofReadiness({
+        photos: demoPhotos,
+        details: demoDetails,
+        visionConfigured,
+        visionObservationUsed: false
+      });
+      setActiveReport({
+        ...buildSavedReport(report, demoDetails, demoPhotos, demoCompany),
+        id: `demo-${scenario.id}`,
+        title: `${demoDetails.homeownerName} - ${demoDetails.propertyAddress}`
+      });
+    }
+
+    setNotice({ type: "success", message: options.message ?? `${scenario.label} sample loaded.` });
+
+    if (options.updateUrl) {
+      setDemoUrl(scenario.id);
+    } else {
+      clearReportUrl();
+    }
+  }
+
+  function startBlankReport() {
+    photos.forEach((photo) => {
+      if (photo.previewUrl.startsWith("blob:")) URL.revokeObjectURL(photo.previewUrl);
+    });
+    setDetails(emptyPropertyDetails);
+    setPhotos([]);
+    setActiveReport(null);
+    setIsDemoMode(false);
+    setActiveDemoScenarioId(null);
+    setLimitsAccepted(false);
+    setFileError("");
+    setNotice({ type: "success", message: "Blank report workflow ready." });
+    clearAppUrl();
+    requestAnimationFrame(() => document.getElementById("workflow")?.scrollIntoView({ behavior: "smooth" }));
+  }
+
+  function jumpToReport() {
+    document.getElementById(activeReport ? "report" : "workflow")?.scrollIntoView({ behavior: "smooth" });
+  }
+
+  function jumpToWorkflow() {
+    document.getElementById("workflow")?.scrollIntoView({ behavior: "smooth" });
   }
 
   function handleAnalyze(event: FormEvent<HTMLFormElement>) {
@@ -504,6 +595,8 @@ function ReadinessApp() {
 
     setSavedReports(nextReports);
     setActiveReport(saved);
+    setIsDemoMode(false);
+    setActiveDemoScenarioId(null);
     setNotice({ type: "success", message: "Report generated and saved locally." });
     setReportUrl(saved.id);
     requestAnimationFrame(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }));
@@ -520,6 +613,8 @@ function ReadinessApp() {
     setDetails(saved.details);
     setPhotos([]);
     setLimitsAccepted(true);
+    setIsDemoMode(false);
+    setActiveDemoScenarioId(null);
     setReportUrl(saved.id);
     setNotice({ type: "success", message: "Saved report loaded. Photo previews are not stored in the client-only MVP." });
     requestAnimationFrame(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }));
@@ -553,13 +648,29 @@ function ReadinessApp() {
 
     try {
       const url = new URL(window.location.href);
-      url.searchParams.set("report", activeReport.id);
+      if (activeDemoScenarioId && !savedReports.some((report) => report.id === activeReport.id)) {
+        url.searchParams.delete("report");
+        url.searchParams.delete("blank");
+        url.searchParams.set("demo", activeDemoScenarioId);
+        url.hash = "report";
+      } else {
+        url.searchParams.set("report", activeReport.id);
+      }
       await navigator.clipboard.writeText(url.toString());
-      setNotice({ type: "success", message: "Local report link copied. It works in this browser until hosted share links are added." });
+      setNotice({
+        type: "success",
+        message: activeDemoScenarioId
+          ? "Demo link copied. It reloads the prefilled sample report."
+          : "Local report link copied. It works in this browser until hosted share links are added."
+      });
     } catch {
       setNotice({ type: "error", message: "Could not copy the local link." });
     }
   }
+
+  const workflowSteps = isDemoMode
+    ? ["Review demo inputs", "Show recommendation", "Explain scores", "Print or share"]
+    : ["Upload photos", "Add job details", "Confirm limits", "Generate report"];
 
   return (
     <div className="app-shell">
@@ -589,25 +700,40 @@ function ReadinessApp() {
               solar, roof tune-up, roof replacement, or an in-person inspection.
             </p>
             <div className="hero-actions">
-              <a className="button primary" href="#workflow">
-                <UploadCloud size={18} />
-                Start report
-              </a>
-              <button className="button ghost" type="button" onClick={() => applyDemoScenario("replacement-first")}>
+              <button
+                className="button primary"
+                type="button"
+                onClick={isDemoMode ? jumpToReport : () => applyDemoScenario(defaultDemoScenarioId)}
+              >
                 <Sparkles size={18} />
-                Load demo
+                {isDemoMode ? "Show demo report" : "Load guided demo"}
+              </button>
+              <button className="button ghost" type="button" onClick={startBlankReport}>
+                <UploadCloud size={18} />
+                Start blank report
               </button>
             </div>
           </div>
           <div className="kpi-panel" aria-label="Dashboard summary">
-            <MetricCard icon={<FileDown size={20} />} label="Reports saved locally this month" value={String(stats.reportsThisMonth)} />
+            <MetricCard icon={<FileDown size={20} />} label="Reports generated this month" value={String(stats.reportsThisMonth)} />
             <MetricCard icon={<BriefcaseBusiness size={20} />} label="Bundle opportunities flagged" value={String(stats.bundleOpportunities)} />
             <MetricCard icon={<BarChart3 size={20} />} label="Average lead quality" value={stats.averageLeadQuality ? String(stats.averageLeadQuality) : "-"} />
           </div>
         </section>
 
+        {isDemoMode && activeDemoScenario ? (
+          <DemoModePanel
+            scenario={activeDemoScenario}
+            reportReady={Boolean(activeReport)}
+            onJumpReport={jumpToReport}
+            onJumpWorkflow={jumpToWorkflow}
+            onReload={() => applyDemoScenario(activeDemoScenario.id)}
+            onStartBlank={startBlankReport}
+          />
+        ) : null}
+
         <section className="progress-strip" aria-label="Workflow steps">
-          {["Load sample or photos", "Add property details", "Confirm limits", "Save and share"].map((step, index) => (
+          {workflowSteps.map((step, index) => (
             <div className="progress-step" key={step}>
               <span>{index + 1}</span>
               {step}
@@ -787,6 +913,59 @@ function NoticeBanner({ notice, onDismiss }: { notice: NonNullable<Notice>; onDi
         x
       </button>
     </div>
+  );
+}
+
+function DemoModePanel({
+  scenario,
+  reportReady,
+  onJumpReport,
+  onJumpWorkflow,
+  onReload,
+  onStartBlank
+}: {
+  scenario: DemoScenario;
+  reportReady: boolean;
+  onJumpReport: () => void;
+  onJumpWorkflow: () => void;
+  onReload: () => void;
+  onStartBlank: () => void;
+}) {
+  return (
+    <section className="demo-mode-panel" aria-label="Guided demo status">
+      <div className="demo-mode-copy">
+        <span className="eyebrow">Guided demo ready</span>
+        <h2>{scenario.label}: {scenario.details.homeownerName}</h2>
+        <p>
+          The sample is already prefilled with {scenario.photos.length} roof photos, job details, roof condition inputs,
+          the pre-appointment limitation acknowledgement, and a generated readiness report.
+        </p>
+        <div className="demo-facts" aria-label="Demo facts">
+          <span>{scenario.details.roofAgeYears ?? "Unknown"} year roof</span>
+          <span>{roofMaterialLabels[scenario.details.roofMaterial]}</span>
+          <span>Leaks: {scenario.details.knownLeaks}</span>
+          <span>{desiredOutcomeLabels[scenario.details.desiredOutcome]}</span>
+        </div>
+      </div>
+      <div className="demo-mode-actions">
+        <button className="button primary" type="button" onClick={onJumpReport}>
+          <FileDown size={17} />
+          {reportReady ? "View generated report" : "View workflow"}
+        </button>
+        <button className="button secondary" type="button" onClick={onJumpWorkflow}>
+          <ClipboardCheck size={17} />
+          Review inputs
+        </button>
+        <button className="button secondary" type="button" onClick={onReload}>
+          <Sparkles size={17} />
+          Reset demo
+        </button>
+        <button className="button ghost" type="button" onClick={onStartBlank}>
+          <ImagePlus size={17} />
+          Start blank
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -1281,9 +1460,28 @@ function createId(): string {
   return `report-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function clonePropertyDetails(details: PropertyDetails): PropertyDetails {
+  return {
+    ...details,
+    visibleConditionFlags: [...details.visibleConditionFlags]
+  };
+}
+
 function setReportUrl(reportId: string) {
   const url = new URL(window.location.href);
+  url.searchParams.delete("demo");
+  url.searchParams.delete("blank");
   url.searchParams.set("report", reportId);
+  url.hash = "report";
+  window.history.replaceState({}, "", url);
+}
+
+function setDemoUrl(scenarioId: string) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("report");
+  url.searchParams.delete("blank");
+  url.searchParams.set("demo", scenarioId);
+  url.hash = "report";
   window.history.replaceState({}, "", url);
 }
 
@@ -1291,6 +1489,15 @@ function clearReportUrl() {
   const url = new URL(window.location.href);
   if (!url.searchParams.has("report")) return;
   url.searchParams.delete("report");
+  window.history.replaceState({}, "", url);
+}
+
+function clearAppUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("report");
+  url.searchParams.delete("demo");
+  url.searchParams.set("blank", "1");
+  url.hash = "workflow";
   window.history.replaceState({}, "", url);
 }
 
