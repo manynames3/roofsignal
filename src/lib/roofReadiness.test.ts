@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { demoScenarios } from "../demoData";
 import {
   analyzeRoofReadiness,
   emptyPropertyDetails,
@@ -101,5 +102,25 @@ describe("roof readiness scoring", () => {
 
     expect(getUnsupportedFileReason(pdf)).toContain("Unsupported file type");
     expect(getUnsupportedFileReason(hugeJpg)).toContain("over 12 MB");
+  });
+
+  it("ships the replacement-first demo with real roof photo assets", () => {
+    const scenario = demoScenarios.find((item) => item.id === "replacement-first");
+
+    expect(scenario).toBeDefined();
+    expect(scenario?.photos).toHaveLength(6);
+
+    scenario?.photos.forEach((photo) => {
+      expect(photo.previewUrl).toMatch(/^\/demo-roof-photos\/.+\.jpg$/);
+    });
+
+    const report = analyzeRoofReadiness({
+      photos: scenario?.photos ?? [],
+      details: scenario!.details,
+      visionConfigured: false
+    });
+
+    expect(report.recommendation.status).toBe("replacement-first");
+    expect(report.keyObservations[0]).toBe("6 roof photos uploaded.");
   });
 });

@@ -8,6 +8,8 @@ export interface DemoScenario {
   photos: UploadedPhoto[];
 }
 
+const DEMO_LAST_MODIFIED = new Date("2026-05-20T00:00:00.000Z").getTime();
+
 function demoPhoto(id: string, fileName: string, label: string, accent: string): UploadedPhoto {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420"><rect width="640" height="420" fill="#edf4ee"/><path d="M24 284 236 124l184 160Z" fill="#9fb8ad"/><path d="M196 284 418 104l198 180Z" fill="#789f92"/><path d="M64 284h520v136H64z" fill="#fffaf0"/><path d="M170 210h190v18H170zm-28 36h246v18H142zm-32 36h314v18H110z" fill="${accent}"/><text x="40" y="62" font-family="Arial" font-size="26" font-weight="700" fill="#18211d">${label}</text></svg>`;
 
@@ -17,7 +19,18 @@ function demoPhoto(id: string, fileName: string, label: string, accent: string):
     previewUrl: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
     sizeBytes: 184000,
     type: "image/jpeg",
-    lastModified: Date.now()
+    lastModified: DEMO_LAST_MODIFIED
+  };
+}
+
+function roofDamagePhoto(id: string, fileName: string, sizeBytes: number): UploadedPhoto {
+  return {
+    id,
+    fileName,
+    previewUrl: `/demo-roof-photos/${fileName}`,
+    sizeBytes,
+    type: "image/jpeg",
+    lastModified: DEMO_LAST_MODIFIED
   };
 }
 
@@ -70,11 +83,15 @@ export const demoScenarios: DemoScenario[] = [
   {
     id: "replacement-first",
     label: "Replacement-first bundle",
-    summary: "Older roof, visible wear, and leak history.",
+    summary:
+      "Older roof with lifted shingles, exposed decking, a nail pop, damaged flashing, and prior patching.",
     photos: [
-      demoPhoto("demo-replace-1", "curling-shingles.jpg", "Curling shingles", "#b13d37"),
-      demoPhoto("demo-replace-2", "interior-stain.jpg", "Ceiling stain", "#b13d37"),
-      demoPhoto("demo-replace-3", "granule-loss.jpg", "Granule loss", "#b7791f")
+      roofDamagePhoto("demo-replace-1", "granule-wear-slope.jpg", 172120),
+      roofDamagePhoto("demo-replace-2", "lifted-shingles-debris.jpg", 447779),
+      roofDamagePhoto("demo-replace-3", "peeled-shingles-decking.jpg", 210668),
+      roofDamagePhoto("demo-replace-4", "nail-pop-chalk.jpg", 771159),
+      roofDamagePhoto("demo-replace-5", "chimney-flashing-damage.jpg", 120597),
+      roofDamagePhoto("demo-replace-6", "missing-shingle-patch.jpg", 130366)
     ],
     details: {
       homeownerName: "Sam Rivera",
@@ -85,11 +102,14 @@ export const demoScenarios: DemoScenario[] = [
       existingSolar: "no",
       utilityBillAvailable: "yes",
       desiredOutcome: "roof-and-solar",
-      repNotes: "Homeowner mentioned water staining near rear bedroom after heavy rain.",
+      repNotes:
+        "Photo set shows lifted shingles, exposed decking at the eave, a nail pop, damaged chimney flashing, and a prior patch or missing-shingle area. Homeowner mentioned water staining near the rear bedroom after heavy rain.",
       visibleConditionFlags: [
         "curling-or-lifted-shingles",
+        "missing-or-damaged-shingles",
         "granule-loss-or-bare-spots",
-        "interior-staining"
+        "damaged-flashing-or-penetrations",
+        "valley-or-gutter-wear"
       ]
     }
   }
