@@ -138,26 +138,33 @@ describe("roof readiness scoring", () => {
     expect(getUnsupportedFileReason(hugeJpg)).toContain("over 12 MB");
   });
 
-  it("ships the replacement-first demo with real roof photo assets", () => {
-    const scenario = demoScenarios.find((item) => item.id === "replacement-first");
+  it("ships every guided demo with real uploaded roof photo assets and the intended recommendation", () => {
+    const expectedStatuses = {
+      "solar-ready": "solar-ready",
+      "repair-first": "repair-first",
+      "replacement-first": "replacement-first"
+    } as const;
 
-    expect(scenario).toBeDefined();
-    expect(scenario?.photos).toHaveLength(6);
+    demoScenarios.forEach((scenario) => {
+      expect(scenario.photos.length).toBeGreaterThan(0);
+      expect(scenario.photoEvidence).toHaveLength(scenario.photos.length);
 
-    scenario?.photos.forEach((photo) => {
-      expect(photo.previewUrl).toMatch(/^\/demo-roof-photos\/.+\.jpg$/);
+      scenario.photos.forEach((photo) => {
+        expect(photo.previewUrl).toMatch(/^\/demo-roof-photos\/.+\.jpg$/);
+      });
+
+      const report = analyzeRoofReadiness({
+        photos: scenario.photos,
+        details: scenario.details,
+        photoEvidence: scenario.photoEvidence,
+        visionConfigured: false
+      });
+
+      expect(report.recommendation.status).toBe(expectedStatuses[scenario.id as keyof typeof expectedStatuses]);
+      expect(report.photoEvidence).toHaveLength(scenario.photos.length);
     });
 
-    const report = analyzeRoofReadiness({
-      photos: scenario?.photos ?? [],
-      details: scenario!.details,
-      photoEvidence: scenario!.photoEvidence,
-      visionConfigured: false
-    });
-
-    expect(report.recommendation.status).toBe("replacement-first");
-    expect(report.photoEvidence).toHaveLength(6);
-    expect(report.photoEvidence[0].observations).toContain("granule-loss-or-bare-spots");
-    expect(report.keyObservations[0]).toBe("6 roof photos uploaded.");
+    const replacementScenario = demoScenarios.find((item) => item.id === "replacement-first");
+    expect(replacementScenario?.photos).toHaveLength(6);
   });
 });

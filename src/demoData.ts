@@ -11,25 +11,25 @@ export interface DemoScenario {
 
 const DEMO_LAST_MODIFIED = new Date("2026-05-20T00:00:00.000Z").getTime();
 
-function demoPhoto(id: string, fileName: string, label: string, accent: string): UploadedPhoto {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="420" viewBox="0 0 640 420"><rect width="640" height="420" fill="#edf4ee"/><path d="M24 284 236 124l184 160Z" fill="#9fb8ad"/><path d="M196 284 418 104l198 180Z" fill="#789f92"/><path d="M64 284h520v136H64z" fill="#fffaf0"/><path d="M170 210h190v18H170zm-28 36h246v18H142zm-32 36h314v18H110z" fill="${accent}"/><text x="40" y="62" font-family="Arial" font-size="26" font-weight="700" fill="#18211d">${label}</text></svg>`;
+const roofPhotoAssets = {
+  granuleWear: { fileName: "granule-wear-slope.jpg", sizeBytes: 172120 },
+  liftedShingles: { fileName: "lifted-shingles-debris.jpg", sizeBytes: 447779 },
+  peeledDecking: { fileName: "peeled-shingles-decking.jpg", sizeBytes: 210668 },
+  nailPop: { fileName: "nail-pop-chalk.jpg", sizeBytes: 771159 },
+  chimneyFlashing: { fileName: "chimney-flashing-damage.jpg", sizeBytes: 120597 },
+  missingPatch: { fileName: "missing-shingle-patch.jpg", sizeBytes: 130366 }
+} as const;
+
+type RoofPhotoAssetKey = keyof typeof roofPhotoAssets;
+
+function roofPhoto(id: string, assetKey: RoofPhotoAssetKey): UploadedPhoto {
+  const asset = roofPhotoAssets[assetKey];
 
   return {
     id,
-    fileName,
-    previewUrl: `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
-    sizeBytes: 184000,
-    type: "image/jpeg",
-    lastModified: DEMO_LAST_MODIFIED
-  };
-}
-
-function roofDamagePhoto(id: string, fileName: string, sizeBytes: number): UploadedPhoto {
-  return {
-    id,
-    fileName,
-    previewUrl: `/demo-roof-photos/${fileName}`,
-    sizeBytes,
+    fileName: asset.fileName,
+    previewUrl: `/demo-roof-photos/${asset.fileName}`,
+    sizeBytes: asset.sizeBytes,
     type: "image/jpeg",
     lastModified: DEMO_LAST_MODIFIED
   };
@@ -37,13 +37,15 @@ function roofDamagePhoto(id: string, fileName: string, sizeBytes: number): Uploa
 
 function evidence(
   photoId: string,
-  fileName: string,
+  assetKey: RoofPhotoAssetKey,
   caption: string,
   observations: VisibleConditionFlag[]
 ): PhotoEvidence {
+  const asset = roofPhotoAssets[assetKey];
+
   return {
     photoId,
-    fileName,
+    fileName: asset.fileName,
     caption,
     observations,
     source: "demo"
@@ -54,18 +56,16 @@ export const demoScenarios: DemoScenario[] = [
   {
     id: "solar-ready",
     label: "Solar-ready lead",
-    summary: "Newer roof, clear photos, no leak history.",
+    summary: "Newer roof lead using the uploaded photo set, no reported leak history.",
     photos: [
-      demoPhoto("demo-ready-1", "front-slope.jpg", "Wide front slope", "#0e7a4f"),
-      demoPhoto("demo-ready-2", "rear-slope.jpg", "Rear slope", "#177e89"),
-      demoPhoto("demo-ready-3", "gutters.jpg", "Gutter edge", "#0e7a4f"),
-      demoPhoto("demo-ready-4", "flashing.jpg", "Flashing view", "#177e89")
+      roofPhoto("demo-ready-1", "granuleWear"),
+      roofPhoto("demo-ready-2", "missingPatch"),
+      roofPhoto("demo-ready-3", "chimneyFlashing")
     ],
     photoEvidence: [
-      evidence("demo-ready-1", "front-slope.jpg", "Wide front slope with no obvious damage in the sample photo.", ["no-obvious-damage"]),
-      evidence("demo-ready-2", "rear-slope.jpg", "Rear slope appears clean enough for a solar-first discussion.", ["no-obvious-damage"]),
-      evidence("demo-ready-3", "gutters.jpg", "Gutter edge included to document roof perimeter context.", ["no-obvious-damage"]),
-      evidence("demo-ready-4", "flashing.jpg", "Flashing view included for appointment confirmation.", ["no-obvious-damage"])
+      evidence("demo-ready-1", "granuleWear", "Wide slope photo included for roof-plane context.", []),
+      evidence("demo-ready-2", "missingPatch", "Ridge and slope photo included for appointment confirmation.", []),
+      evidence("demo-ready-3", "chimneyFlashing", "Flashing-area photo included for final field confirmation.", [])
     ],
     details: {
       homeownerName: "Maya Carter",
@@ -83,16 +83,18 @@ export const demoScenarios: DemoScenario[] = [
   {
     id: "repair-first",
     label: "Tune-up before solar",
-    summary: "Moderate age with flashing and gutter concerns.",
+    summary: "Moderate age using uploaded photos with localized repair concerns.",
     photos: [
-      demoPhoto("demo-repair-1", "valley-wear.jpg", "Valley wear", "#b7791f"),
-      demoPhoto("demo-repair-2", "flashing-detail.jpg", "Flashing detail", "#b7791f"),
-      demoPhoto("demo-repair-3", "wide-exterior.jpg", "Wide exterior", "#177e89")
+      roofPhoto("demo-repair-1", "nailPop"),
+      roofPhoto("demo-repair-2", "chimneyFlashing"),
+      roofPhoto("demo-repair-3", "missingPatch"),
+      roofPhoto("demo-repair-4", "granuleWear")
     ],
     photoEvidence: [
-      evidence("demo-repair-1", "valley-wear.jpg", "Valley area shows wear that should be checked before final solar design.", ["valley-or-gutter-wear"]),
-      evidence("demo-repair-2", "flashing-detail.jpg", "Flashing detail needs roofer review before panels are installed.", ["damaged-flashing-or-penetrations"]),
-      evidence("demo-repair-3", "wide-exterior.jpg", "Wide exterior shot provides roof-plane context for the appointment.", [])
+      evidence("demo-repair-1", "nailPop", "Close-up photo shows a nail pop or puncture that should be corrected before solar.", ["damaged-flashing-or-penetrations"]),
+      evidence("demo-repair-2", "chimneyFlashing", "Chimney flashing area should be reviewed before final solar design.", ["damaged-flashing-or-penetrations"]),
+      evidence("demo-repair-3", "missingPatch", "Localized missing-shingle or patch area should be addressed before panels go on.", ["missing-or-damaged-shingles"]),
+      evidence("demo-repair-4", "granuleWear", "Wide slope photo provides broader roof context for the appointment.", [])
     ],
     details: {
       homeownerName: "Jordan Lee",
@@ -104,7 +106,11 @@ export const demoScenarios: DemoScenario[] = [
       utilityBillAvailable: "yes",
       desiredOutcome: "roof-and-solar",
       repNotes: "Homeowner is open to roof corrections if they protect the solar installation.",
-      visibleConditionFlags: ["damaged-flashing-or-penetrations", "valley-or-gutter-wear"]
+      visibleConditionFlags: [
+        "damaged-flashing-or-penetrations",
+        "missing-or-damaged-shingles",
+        "valley-or-gutter-wear"
+      ]
     }
   },
   {
@@ -113,20 +119,20 @@ export const demoScenarios: DemoScenario[] = [
     summary:
       "Older roof with lifted shingles, exposed decking, a nail pop, damaged flashing, and prior patching.",
     photos: [
-      roofDamagePhoto("demo-replace-1", "granule-wear-slope.jpg", 172120),
-      roofDamagePhoto("demo-replace-2", "lifted-shingles-debris.jpg", 447779),
-      roofDamagePhoto("demo-replace-3", "peeled-shingles-decking.jpg", 210668),
-      roofDamagePhoto("demo-replace-4", "nail-pop-chalk.jpg", 771159),
-      roofDamagePhoto("demo-replace-5", "chimney-flashing-damage.jpg", 120597),
-      roofDamagePhoto("demo-replace-6", "missing-shingle-patch.jpg", 130366)
+      roofPhoto("demo-replace-1", "granuleWear"),
+      roofPhoto("demo-replace-2", "liftedShingles"),
+      roofPhoto("demo-replace-3", "peeledDecking"),
+      roofPhoto("demo-replace-4", "nailPop"),
+      roofPhoto("demo-replace-5", "chimneyFlashing"),
+      roofPhoto("demo-replace-6", "missingPatch")
     ],
     photoEvidence: [
-      evidence("demo-replace-1", "granule-wear-slope.jpg", "Aged asphalt shingles show surface wear and dark bare-looking areas.", ["granule-loss-or-bare-spots"]),
-      evidence("demo-replace-2", "lifted-shingles-debris.jpg", "Multiple lifted shingles and debris are visible across the slope.", ["curling-or-lifted-shingles", "missing-or-damaged-shingles"]),
-      evidence("demo-replace-3", "peeled-shingles-decking.jpg", "Roof edge shows peeled-back shingles with exposed underlayment or decking.", ["missing-or-damaged-shingles", "valley-or-gutter-wear"]),
-      evidence("demo-replace-4", "nail-pop-chalk.jpg", "Close-up photo documents a nail pop or puncture marked for review.", ["damaged-flashing-or-penetrations"]),
-      evidence("demo-replace-5", "chimney-flashing-damage.jpg", "Chimney area shows flashing and shingle interface concerns.", ["damaged-flashing-or-penetrations"]),
-      evidence("demo-replace-6", "missing-shingle-patch.jpg", "Patch or missing-shingle area near the ridge should be inspected before solar quoting.", ["missing-or-damaged-shingles"])
+      evidence("demo-replace-1", "granuleWear", "Aged asphalt shingles show surface wear and dark bare-looking areas.", ["granule-loss-or-bare-spots"]),
+      evidence("demo-replace-2", "liftedShingles", "Multiple lifted shingles and debris are visible across the slope.", ["curling-or-lifted-shingles", "missing-or-damaged-shingles"]),
+      evidence("demo-replace-3", "peeledDecking", "Roof edge shows peeled-back shingles with exposed underlayment or decking.", ["missing-or-damaged-shingles", "valley-or-gutter-wear"]),
+      evidence("demo-replace-4", "nailPop", "Close-up photo documents a nail pop or puncture marked for review.", ["damaged-flashing-or-penetrations"]),
+      evidence("demo-replace-5", "chimneyFlashing", "Chimney area shows flashing and shingle interface concerns.", ["damaged-flashing-or-penetrations"]),
+      evidence("demo-replace-6", "missingPatch", "Patch or missing-shingle area near the ridge should be inspected before solar quoting.", ["missing-or-damaged-shingles"])
     ],
     details: {
       homeownerName: "Sam Rivera",
