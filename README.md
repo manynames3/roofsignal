@@ -50,7 +50,7 @@ npm run dev -- --port 5174
 
 Open the landing page at `/` and the report builder at `/app`.
 
-For a streamlined demo, open `/app`. It preloads the replacement-first sample case with demo photos, job details, the limitation acknowledgement, and a generated report. Use `/app?blank=1` for an empty workflow.
+For a streamlined demo, open `/app`. It preloads the replacement-first sample case with demo photos, job details, demo company/rep contact information, the limitation acknowledgement, and a generated report. Use `/app?blank=1` for an empty workflow.
 
 ## Test and build
 

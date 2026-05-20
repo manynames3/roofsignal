@@ -97,6 +97,14 @@ const statusTheme: Record<RecommendationStatus, { tone: string; icon: ReactNode 
 
 const defaultDemoScenarioId = "replacement-first";
 
+const guidedDemoCompanyProfile: CompanyProfile = {
+  companyName: "Northstar Roof + Solar",
+  repName: "Alex Morgan",
+  phone: "(555) 014-2091",
+  email: "alex@northstarroofsolar.com",
+  licenseNote: "Pre-appointment triage only. Final scope requires qualified roof review."
+};
+
 function App() {
   if (window.location.pathname.startsWith("/app")) {
     return <ReadinessApp />;
@@ -587,11 +595,12 @@ function ReadinessApp() {
       demoPhotos,
       scenario.photoEvidence.map((item) => clonePhotoEvidence(item))
     );
-    const demoCompany = options.companyOverride ?? company;
+    const demoCompany = getGuidedDemoCompanyProfile(options.companyOverride ?? company);
 
     setDetails(demoDetails);
     setPhotos(demoPhotos);
     setPhotoEvidence(demoEvidence);
+    setCompany(demoCompany);
     setActiveReport(null);
     setIsDemoMode(true);
     setActiveDemoScenarioId(scenario.id);
@@ -1635,6 +1644,21 @@ function applyPhotoEvidenceToDetails(details: PropertyDetails, evidence: PhotoEv
   }
 
   return details;
+}
+
+function getGuidedDemoCompanyProfile(profile: CompanyProfile): CompanyProfile {
+  const companyName = profile.companyName.trim();
+
+  return {
+    companyName:
+      companyName && companyName !== defaultCompanyProfile.companyName
+        ? companyName
+        : guidedDemoCompanyProfile.companyName,
+    repName: profile.repName.trim() || guidedDemoCompanyProfile.repName,
+    phone: profile.phone.trim() || guidedDemoCompanyProfile.phone,
+    email: profile.email.trim() || guidedDemoCompanyProfile.email,
+    licenseNote: profile.licenseNote.trim() || guidedDemoCompanyProfile.licenseNote
+  };
 }
 
 function stripSessionPhotoUrls(report: SavedReadinessReport): SavedReadinessReport {
