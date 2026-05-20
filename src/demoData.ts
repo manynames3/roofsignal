@@ -1,4 +1,4 @@
-import type { PropertyDetails, UploadedPhoto } from "./types/roof";
+import type { PhotoEvidence, PropertyDetails, UploadedPhoto, VisibleConditionFlag } from "./types/roof";
 
 export interface DemoScenario {
   id: string;
@@ -6,6 +6,7 @@ export interface DemoScenario {
   summary: string;
   details: PropertyDetails;
   photos: UploadedPhoto[];
+  photoEvidence: PhotoEvidence[];
 }
 
 const DEMO_LAST_MODIFIED = new Date("2026-05-20T00:00:00.000Z").getTime();
@@ -34,6 +35,21 @@ function roofDamagePhoto(id: string, fileName: string, sizeBytes: number): Uploa
   };
 }
 
+function evidence(
+  photoId: string,
+  fileName: string,
+  caption: string,
+  observations: VisibleConditionFlag[]
+): PhotoEvidence {
+  return {
+    photoId,
+    fileName,
+    caption,
+    observations,
+    source: "demo"
+  };
+}
+
 export const demoScenarios: DemoScenario[] = [
   {
     id: "solar-ready",
@@ -44,6 +60,12 @@ export const demoScenarios: DemoScenario[] = [
       demoPhoto("demo-ready-2", "rear-slope.jpg", "Rear slope", "#177e89"),
       demoPhoto("demo-ready-3", "gutters.jpg", "Gutter edge", "#0e7a4f"),
       demoPhoto("demo-ready-4", "flashing.jpg", "Flashing view", "#177e89")
+    ],
+    photoEvidence: [
+      evidence("demo-ready-1", "front-slope.jpg", "Wide front slope with no obvious damage in the sample photo.", ["no-obvious-damage"]),
+      evidence("demo-ready-2", "rear-slope.jpg", "Rear slope appears clean enough for a solar-first discussion.", ["no-obvious-damage"]),
+      evidence("demo-ready-3", "gutters.jpg", "Gutter edge included to document roof perimeter context.", ["no-obvious-damage"]),
+      evidence("demo-ready-4", "flashing.jpg", "Flashing view included for appointment confirmation.", ["no-obvious-damage"])
     ],
     details: {
       homeownerName: "Maya Carter",
@@ -66,6 +88,11 @@ export const demoScenarios: DemoScenario[] = [
       demoPhoto("demo-repair-1", "valley-wear.jpg", "Valley wear", "#b7791f"),
       demoPhoto("demo-repair-2", "flashing-detail.jpg", "Flashing detail", "#b7791f"),
       demoPhoto("demo-repair-3", "wide-exterior.jpg", "Wide exterior", "#177e89")
+    ],
+    photoEvidence: [
+      evidence("demo-repair-1", "valley-wear.jpg", "Valley area shows wear that should be checked before final solar design.", ["valley-or-gutter-wear"]),
+      evidence("demo-repair-2", "flashing-detail.jpg", "Flashing detail needs roofer review before panels are installed.", ["damaged-flashing-or-penetrations"]),
+      evidence("demo-repair-3", "wide-exterior.jpg", "Wide exterior shot provides roof-plane context for the appointment.", [])
     ],
     details: {
       homeownerName: "Jordan Lee",
@@ -92,6 +119,14 @@ export const demoScenarios: DemoScenario[] = [
       roofDamagePhoto("demo-replace-4", "nail-pop-chalk.jpg", 771159),
       roofDamagePhoto("demo-replace-5", "chimney-flashing-damage.jpg", 120597),
       roofDamagePhoto("demo-replace-6", "missing-shingle-patch.jpg", 130366)
+    ],
+    photoEvidence: [
+      evidence("demo-replace-1", "granule-wear-slope.jpg", "Aged asphalt shingles show surface wear and dark bare-looking areas.", ["granule-loss-or-bare-spots"]),
+      evidence("demo-replace-2", "lifted-shingles-debris.jpg", "Multiple lifted shingles and debris are visible across the slope.", ["curling-or-lifted-shingles", "missing-or-damaged-shingles"]),
+      evidence("demo-replace-3", "peeled-shingles-decking.jpg", "Roof edge shows peeled-back shingles with exposed underlayment or decking.", ["missing-or-damaged-shingles", "valley-or-gutter-wear"]),
+      evidence("demo-replace-4", "nail-pop-chalk.jpg", "Close-up photo documents a nail pop or puncture marked for review.", ["damaged-flashing-or-penetrations"]),
+      evidence("demo-replace-5", "chimney-flashing-damage.jpg", "Chimney area shows flashing and shingle interface concerns.", ["damaged-flashing-or-penetrations"]),
+      evidence("demo-replace-6", "missing-shingle-patch.jpg", "Patch or missing-shingle area near the ridge should be inspected before solar quoting.", ["missing-or-damaged-shingles"])
     ],
     details: {
       homeownerName: "Sam Rivera",

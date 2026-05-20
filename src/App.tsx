@@ -52,6 +52,7 @@ import { isVisionAnalysisConfigured } from "./lib/visionAnalysisProvider";
 import type {
   CompanyProfile,
   KnownStatus,
+  PhotoEvidence,
   PropertyDetails,
   ReadinessReport,
   RecommendationStatus,
@@ -74,6 +75,18 @@ const conditionOptions: VisibleConditionFlag[] = [
   "interior-staining",
   "limited-or-unclear-photos"
 ];
+
+const photoTagLabels: Record<VisibleConditionFlag, string> = {
+  "no-obvious-damage": "No obvious damage",
+  "curling-or-lifted-shingles": "Lifted/curling",
+  "missing-or-damaged-shingles": "Missing/damaged",
+  "granule-loss-or-bare-spots": "Granule loss",
+  "damaged-flashing-or-penetrations": "Flashing/penetration",
+  "valley-or-gutter-wear": "Valley/gutter wear",
+  "sagging-or-soft-decking": "Decking concern",
+  "interior-staining": "Interior stain",
+  "limited-or-unclear-photos": "Limited/unclear"
+};
 
 const statusTheme: Record<RecommendationStatus, { tone: string; icon: ReactNode }> = {
   "solar-ready": { tone: "success", icon: <CheckCircle2 size={18} /> },
@@ -369,6 +382,7 @@ function FaqItem({ title, text }: { title: string; text: string }) {
 
 function ReadinessApp() {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
+  const [photoEvidence, setPhotoEvidence] = useState<PhotoEvidence[]>([]);
   const [details, setDetails] = useState<PropertyDetails>(emptyPropertyDetails);
   const [company, setCompany] = useState<CompanyProfile>(defaultCompanyProfile);
   const [savedReports, setSavedReports] = useState<SavedReadinessReport[]>([]);
@@ -406,6 +420,7 @@ function ReadinessApp() {
     if (linkedReport) {
       setActiveReport(linkedReport);
       setDetails(linkedReport.details);
+      setPhotoEvidence(linkedReport.report.photoEvidence ?? []);
       setLimitsAccepted(true);
       setIsDemoMode(false);
       setActiveDemoScenarioId(null);
@@ -452,7 +467,11 @@ function ReadinessApp() {
     });
 
     if (accepted.length > 0) {
-      setPhotos((current) => [...current, ...accepted].slice(0, 16));
+      setPhotos((current) => {
+        const nextPhotos = [...current, ...accepted].slice(0, 16);
+        setPhotoEvidence((currentEvidence) => syncPhotoEvidenceForPhotos(nextPhotos, currentEvidence));
+        return nextPhotos;
+      });
       setActiveReport(null);
       clearReportUrl();
     }
@@ -466,6 +485,51 @@ function ReadinessApp() {
       if (photo?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(photo.previewUrl);
       return current.filter((item) => item.id !== photoId);
     });
+    setPhotoEvidence((current) => current.filter((item) => item.photoId !== photoId));
+    setActiveReport(null);
+    clearReportUrl();
+  }
+
+  function updatePhotoEvidenceCaption(photoId: string, caption: string) {
+    setPhotoEvidence((current) => {
+      const currentByPhotoId = new Map(current.map((item) => [item.photoId, item]));
+
+      return photos.map((photo) => {
+        const item = currentByPhotoId.get(photo.id) ?? createPhotoEvidence(photo);
+        return item.photoId === photoId ? { ...item, caption, source: "rep-entered" } : item;
+      });
+    });
+    setActiveReport(null);
+    clearReportUrl();
+  }
+
+  function togglePhotoEvidenceObservation(photoId: string, flag: VisibleConditionFlag) {
+    const existing = photoEvidence.find((item) => item.photoId === photoId);
+    const willAdd = !existing?.observations.includes(flag);
+
+    setPhotoEvidence((current) => {
+      const currentByPhotoId = new Map(current.map((item) => [item.photoId, item]));
+
+      return photos.map((photo) => {
+        const item = currentByPhotoId.get(photo.id) ?? createPhotoEvidence(photo);
+        if (item.photoId !== photoId) return item;
+
+        const nextObservations = item.observations.includes(flag)
+          ? item.observations.filter((observation) => observation !== flag)
+          : [...item.observations, flag];
+
+        return {
+          ...item,
+          observations: nextObservations,
+          source: "rep-entered"
+        };
+      });
+    });
+
+    if (willAdd && flag !== "no-obvious-damage") {
+      setDetails((current) => addConditionFlagToDetails(current, flag));
+    }
+
     setActiveReport(null);
     clearReportUrl();
   }
@@ -519,10 +583,15 @@ function ReadinessApp() {
 
     const demoDetails = clonePropertyDetails(scenario.details);
     const demoPhotos = scenario.photos.map((photo) => ({ ...photo }));
+    const demoEvidence = syncPhotoEvidenceForPhotos(
+      demoPhotos,
+      scenario.photoEvidence.map((item) => clonePhotoEvidence(item))
+    );
     const demoCompany = options.companyOverride ?? company;
 
     setDetails(demoDetails);
     setPhotos(demoPhotos);
+    setPhotoEvidence(demoEvidence);
     setActiveReport(null);
     setIsDemoMode(true);
     setActiveDemoScenarioId(scenario.id);
@@ -533,6 +602,7 @@ function ReadinessApp() {
       const report = analyzeRoofReadiness({
         photos: demoPhotos,
         details: demoDetails,
+        photoEvidence: demoEvidence,
         visionConfigured,
         visionObservationUsed: false
       });
@@ -558,6 +628,7 @@ function ReadinessApp() {
     });
     setDetails(emptyPropertyDetails);
     setPhotos([]);
+    setPhotoEvidence([]);
     setActiveReport(null);
     setIsDemoMode(false);
     setActiveDemoScenarioId(null);
@@ -584,17 +655,22 @@ function ReadinessApp() {
       return;
     }
 
+    const evidenceForPhotos = syncPhotoEvidenceForPhotos(photos, photoEvidence);
+    const detailsForReport = applyPhotoEvidenceToDetails(details, evidenceForPhotos);
     const report = analyzeRoofReadiness({
       photos,
-      details,
+      details: detailsForReport,
+      photoEvidence: evidenceForPhotos,
       visionConfigured,
       visionObservationUsed: false
     });
-    const saved = buildSavedReport(report, details, photos, company);
-    const nextReports = saveReport(saved);
+    const saved = buildSavedReport(report, detailsForReport, photos, company);
+    const nextReports = saveReport(stripSessionPhotoUrls(saved));
 
     setSavedReports(nextReports);
     setActiveReport(saved);
+    setDetails(detailsForReport);
+    setPhotoEvidence(evidenceForPhotos);
     setIsDemoMode(false);
     setActiveDemoScenarioId(null);
     setNotice({ type: "success", message: "Report generated and saved locally." });
@@ -611,12 +687,16 @@ function ReadinessApp() {
 
     setActiveReport(saved);
     setDetails(saved.details);
+    setPhotoEvidence(saved.report.photoEvidence ?? []);
     setPhotos([]);
     setLimitsAccepted(true);
     setIsDemoMode(false);
     setActiveDemoScenarioId(null);
     setReportUrl(saved.id);
-    setNotice({ type: "success", message: "Saved report loaded. Photo previews are not stored in the client-only MVP." });
+    setNotice({
+      type: "success",
+      message: "Saved report loaded. Uploaded image bytes are not stored; photo evidence keeps file names, captions, and tags."
+    });
     requestAnimationFrame(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }));
   }
 
@@ -758,7 +838,13 @@ function ReadinessApp() {
             />
             <PhotoDropzone onFiles={addFiles} />
             {fileError ? <p className="form-error">{fileError}</p> : null}
-            <PhotoPreviewGrid photos={photos} onRemove={removePhoto} />
+            <PhotoEvidenceEditor
+              photos={photos}
+              evidence={photoEvidence}
+              onRemove={removePhoto}
+              onCaptionChange={updatePhotoEvidenceCaption}
+              onObservationToggle={togglePhotoEvidenceObservation}
+            />
           </section>
 
           <section className="panel">
@@ -1080,33 +1166,126 @@ function PhotoDropzone({ onFiles }: { onFiles: (files: FileList | File[]) => voi
   );
 }
 
-function PhotoPreviewGrid({ photos, onRemove }: { photos: UploadedPhoto[]; onRemove: (photoId: string) => void }) {
+function PhotoEvidenceEditor({
+  photos,
+  evidence,
+  onRemove,
+  onCaptionChange,
+  onObservationToggle
+}: {
+  photos: UploadedPhoto[];
+  evidence: PhotoEvidence[];
+  onRemove: (photoId: string) => void;
+  onCaptionChange: (photoId: string, caption: string) => void;
+  onObservationToggle: (photoId: string, flag: VisibleConditionFlag) => void;
+}) {
   if (photos.length === 0) {
     return (
       <div className="empty-preview">
         <ImagePlus size={26} />
-        <p>No photos uploaded yet. The report can run, but confidence will be lower.</p>
+        <p>No photos uploaded yet. The report can run, but confidence and photo evidence will be limited.</p>
+      </div>
+    );
+  }
+
+  const evidenceByPhotoId = new Map(evidence.map((item) => [item.photoId, item]));
+
+  return (
+    <div className="photo-evidence-editor">
+      <div className="photo-evidence-intro">
+        <strong>Photo evidence</strong>
+        <span>Add a short caption and tag what the photo visibly supports. These notes appear in the report.</span>
+      </div>
+      {photos.map((photo) => {
+        const item = evidenceByPhotoId.get(photo.id) ?? createPhotoEvidence(photo);
+        return (
+          <article className="photo-evidence-card" key={photo.id}>
+            <div className="photo-card-image">
+              <img src={photo.previewUrl} alt={`Uploaded roof photo ${photo.fileName}`} />
+              <button type="button" aria-label={`Remove ${photo.fileName}`} onClick={() => onRemove(photo.id)}>
+                <Trash2 size={16} />
+              </button>
+            </div>
+            <label className="field compact-field">
+              <span>Caption</span>
+              <input
+                value={item.caption}
+                onChange={(event) => onCaptionChange(photo.id, event.target.value)}
+                placeholder="Example: lifted shingles near rear slope"
+              />
+            </label>
+            <div className="photo-tag-list" aria-label={`Visible observations for ${photo.fileName}`}>
+              {conditionOptions.map((flag) => (
+                <label className={`photo-tag ${item.observations.includes(flag) ? "active" : ""}`} key={flag}>
+                  <input
+                    type="checkbox"
+                    checked={item.observations.includes(flag)}
+                    onChange={() => onObservationToggle(photo.id, flag)}
+                  />
+                  <span>{photoTagLabels[flag]}</span>
+                </label>
+              ))}
+            </div>
+            <p className="photo-file-name" title={photo.fileName}>{photo.fileName}</p>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function PhotoEvidenceReport({ evidence }: { evidence: PhotoEvidence[] }) {
+  if (evidence.length === 0) return null;
+
+  return (
+    <section className="photo-evidence-report">
+      <div className="report-section-heading">
+        <p className="eyebrow">Photo Evidence</p>
+        <h3>Rep-confirmed photo notes</h3>
+        <span>These observations are based on uploaded photos and rep input, not an automated roof inspection.</span>
+      </div>
+      <div className="photo-evidence-grid">
+        {evidence.map((item) => (
+          <article className="photo-evidence-report-card" key={item.photoId}>
+            <PhotoEvidenceImage evidence={item} />
+            <div>
+              <strong>{item.caption || "Roof photo evidence"}</strong>
+              <span className="photo-file-name" title={item.fileName}>{item.fileName}</span>
+              <div className="report-tag-list">
+                {item.observations.length > 0 ? (
+                  item.observations.map((flag) => <span key={flag}>{photoTagLabels[flag]}</span>)
+                ) : (
+                  <span>No specific observation tagged</span>
+                )}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PhotoEvidenceImage({ evidence }: { evidence: PhotoEvidence }) {
+  const [failed, setFailed] = useState(false);
+
+  if (!evidence.previewUrl || failed) {
+    return (
+      <div className="photo-fallback">
+        <ImagePlus size={22} />
+        <span>Image not stored</span>
       </div>
     );
   }
 
   return (
-    <div className="photo-grid">
-      {photos.map((photo) => (
-        <div className="photo-card" key={photo.id}>
-          <img src={photo.previewUrl} alt={`Uploaded roof photo ${photo.fileName}`} />
-          <div className="photo-meta">
-            <span title={photo.fileName}>{photo.fileName}</span>
-            <button type="button" aria-label={`Remove ${photo.fileName}`} onClick={() => onRemove(photo.id)}>
-              <Trash2 size={16} />
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
+    <img
+      src={evidence.previewUrl}
+      alt={`Roof photo evidence ${evidence.fileName}`}
+      onError={() => setFailed(true)}
+    />
   );
 }
-
 function TextField({
   label,
   value,
@@ -1278,6 +1457,8 @@ function ReportSection({
           <ReportBlock title="Questions to ask homeowner" items={report.questionsToAsk} />
         </div>
 
+        <PhotoEvidenceReport evidence={report.photoEvidence ?? []} />
+
         <section className="next-action">
           <div>
             <p className="eyebrow">Next Best Action</p>
@@ -1308,7 +1489,7 @@ function ReportPlaceholder({ visionConfigured }: { visionConfigured: boolean }) 
           <p className="eyebrow">Readiness report</p>
           <h2>Complete the job details, confirm limitations, and generate a saved homeowner-ready report.</h2>
           <p>
-            The report will include transparent scores, sales path recommendation, homeowner questions, branded print export,
+            The report will include transparent scores, photo evidence, homeowner questions, next action, branded print export,
             copyable summary, local history, and the required pre-appointment disclaimer.
           </p>
           <span className="pill muted">
@@ -1375,6 +1556,100 @@ function getReadinessChecks(photos: UploadedPhoto[], details: PropertyDetails): 
   return checks;
 }
 
+function createPhotoEvidence(photo: UploadedPhoto): PhotoEvidence {
+  return {
+    photoId: photo.id,
+    fileName: photo.fileName,
+    previewUrl: photo.previewUrl,
+    caption: getDefaultPhotoCaption(photo.fileName),
+    observations: [],
+    source: "rep-entered"
+  };
+}
+
+function clonePhotoEvidence(evidence: PhotoEvidence): PhotoEvidence {
+  return {
+    ...evidence,
+    observations: [...evidence.observations]
+  };
+}
+
+function syncPhotoEvidenceForPhotos(photos: UploadedPhoto[], evidence: PhotoEvidence[]): PhotoEvidence[] {
+  const evidenceByPhotoId = new Map(evidence.map((item) => [item.photoId, item]));
+
+  return photos.map((photo) => {
+    const existing = evidenceByPhotoId.get(photo.id);
+
+    return {
+      photoId: photo.id,
+      fileName: photo.fileName,
+      previewUrl: existing?.previewUrl ?? photo.previewUrl,
+      caption: existing?.caption ?? getDefaultPhotoCaption(photo.fileName),
+      observations: [...(existing?.observations ?? [])],
+      source: existing?.source ?? "rep-entered"
+    };
+  });
+}
+
+function getDefaultPhotoCaption(fileName: string): string {
+  const cleanName = fileName
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleanName ? `Roof photo: ${cleanName}` : "Roof photo uploaded for readiness review.";
+}
+
+function addConditionFlagToDetails(details: PropertyDetails, flag: VisibleConditionFlag): PropertyDetails {
+  if (details.visibleConditionFlags.includes(flag)) return details;
+
+  if (flag === "no-obvious-damage") {
+    return {
+      ...details,
+      visibleConditionFlags: ["no-obvious-damage"]
+    };
+  }
+
+  return {
+    ...details,
+    visibleConditionFlags: [
+      ...details.visibleConditionFlags.filter(
+        (item) => item !== "no-obvious-damage" && (flag === "limited-or-unclear-photos" || item !== "limited-or-unclear-photos")
+      ),
+      flag
+    ]
+  };
+}
+
+function applyPhotoEvidenceToDetails(details: PropertyDetails, evidence: PhotoEvidence[]): PropertyDetails {
+  const observations = Array.from(new Set(evidence.flatMap((item) => item.observations)));
+  const riskObservations = observations.filter((flag) => flag !== "no-obvious-damage");
+
+  if (riskObservations.length > 0) {
+    return riskObservations.reduce((current, flag) => addConditionFlagToDetails(current, flag), details);
+  }
+
+  if (observations.includes("no-obvious-damage")) {
+    return addConditionFlagToDetails(details, "no-obvious-damage");
+  }
+
+  return details;
+}
+
+function stripSessionPhotoUrls(report: SavedReadinessReport): SavedReadinessReport {
+  return {
+    ...report,
+    report: {
+      ...report.report,
+      photoEvidence: report.report.photoEvidence.map((item) => ({
+        ...item,
+        previewUrl: item.previewUrl?.startsWith("blob:") ? undefined : item.previewUrl
+      }))
+    }
+  };
+}
+
 function buildDashboardStats(reports: SavedReadinessReport[]) {
   const now = new Date();
   const reportsThisMonth = reports.filter((report) => {
@@ -1416,6 +1691,19 @@ function buildSavedReport(
 }
 
 function buildClipboardSummary(report: ReadinessReport, details: PropertyDetails, company: CompanyProfile): string {
+  const photoEvidence = report.photoEvidence ?? [];
+  const photoEvidenceLines = photoEvidence.length
+    ? [
+        "Photo evidence:",
+        ...photoEvidence.map((item) => {
+          const tags = item.observations.length
+            ? item.observations.map((flag) => photoTagLabels[flag]).join(", ")
+            : "No specific observation tagged";
+          return `- ${item.caption || item.fileName}: ${tags}`;
+        })
+      ]
+    : [];
+
   return [
     `${company.companyName || "RoofSignal"} Readiness Report`,
     `Homeowner: ${details.homeownerName || "Pending"}`,
@@ -1425,6 +1713,7 @@ function buildClipboardSummary(report: ReadinessReport, details: PropertyDetails
     `Sales path: ${report.recommendation.recommendedSalesPath}`,
     `Next action: ${report.recommendation.nextBestAction}`,
     `Talk track: ${report.suggestedTalkTrack}`,
+    ...photoEvidenceLines,
     `Disclaimer: ${report.disclaimer}`
   ].join("\n");
 }

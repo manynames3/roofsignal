@@ -38,6 +38,17 @@ export interface UploadedPhoto {
   lastModified: number;
 }
 
+export type PhotoEvidenceSource = "rep-entered" | "demo" | "vision-suggested";
+
+export interface PhotoEvidence {
+  photoId: string;
+  fileName: string;
+  previewUrl?: string;
+  caption: string;
+  observations: VisibleConditionFlag[];
+  source: PhotoEvidenceSource;
+}
+
 export interface PropertyDetails {
   homeownerName: string;
   propertyAddress: string;
@@ -54,6 +65,7 @@ export interface PropertyDetails {
 export interface RoofAssessmentInput {
   photos: UploadedPhoto[];
   details: PropertyDetails;
+  photoEvidence?: PhotoEvidence[];
   visionConfigured?: boolean;
   visionObservationUsed?: boolean;
 }
@@ -86,6 +98,7 @@ export interface ReadinessReport {
   roofRiskFactors: string[];
   solarReadinessFactors: string[];
   questionsToAsk: string[];
+  photoEvidence: PhotoEvidence[];
   suggestedTalkTrack: string;
   disclaimer: string;
   leadQualityScore: number;

@@ -984,6 +984,119 @@ main {
   background: #fff7f5;
 }
 
+.photo-evidence-editor {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.photo-evidence-intro {
+  padding: 12px 14px;
+  border: 1px solid #dce4d8;
+  border-radius: 8px;
+  background: #fbfcfa;
+}
+
+.photo-evidence-intro strong,
+.photo-evidence-intro span {
+  display: block;
+}
+
+.photo-evidence-intro span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.photo-evidence-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.photo-card-image {
+  position: relative;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #e8eee6;
+}
+
+.photo-card-image img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.35;
+  object-fit: cover;
+}
+
+.photo-card-image button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(109, 42, 36, 0.2);
+  border-radius: 7px;
+  color: var(--red);
+  background: rgba(255, 247, 245, 0.94);
+}
+
+.compact-field {
+  gap: 6px;
+}
+
+.compact-field input {
+  min-height: 40px;
+}
+
+.photo-tag-list,
+.report-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.photo-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid #dce4d8;
+  border-radius: 999px;
+  padding: 6px 9px;
+  color: #536159;
+  background: #fbfcfa;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.photo-tag.active {
+  border-color: rgba(14, 122, 79, 0.35);
+  color: var(--green);
+  background: #eef8f2;
+}
+
+.photo-tag input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.photo-file-name {
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .field-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1443,6 +1556,95 @@ main {
   line-height: 1.45;
 }
 
+.photo-evidence-report {
+  margin-top: 16px;
+  padding: 20px;
+  border: 1px solid #dce4d8;
+  border-radius: 8px;
+  background: #f8fbf7;
+}
+
+.report-section-heading h3 {
+  margin: 4px 0 0;
+  font-size: 1.2rem;
+}
+
+.report-section-heading span {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.photo-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.photo-evidence-report-card {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid #dce4d8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.photo-evidence-report-card img,
+.photo-fallback {
+  width: 128px;
+  aspect-ratio: 1.18;
+  border-radius: 7px;
+  object-fit: cover;
+  background: #e8eee6;
+}
+
+.photo-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  text-align: center;
+}
+
+.photo-fallback span {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.photo-evidence-report-card strong {
+  display: block;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.photo-evidence-report-card .photo-file-name {
+  display: block;
+  margin-top: 4px;
+}
+
+.report-tag-list {
+  margin-top: 10px;
+}
+
+.report-tag-list span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid #dce4d8;
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #426052;
+  background: #f4faf6;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
 .next-action {
   display: flex;
   justify-content: space-between;
@@ -1582,6 +1784,7 @@ main {
   .progress-strip,
   .compact-field-grid,
   .field-grid,
+  .photo-evidence-grid,
   .report-grid,
   .score-board,
   .segmented-grid {
@@ -1618,6 +1821,15 @@ main {
 
   .photo-grid {
     grid-template-columns: 1fr;
+  }
+
+  .photo-evidence-report-card {
+    grid-template-columns: 1fr;
+  }
+
+  .photo-evidence-report-card img,
+  .photo-fallback {
+    width: 100%;
   }
 
   .hero-copy h2 {
@@ -1666,6 +1878,8 @@ main {
   }
 
   .report-block,
+  .photo-evidence-report,
+  .photo-evidence-report-card,
   .next-action,
   .confidence-card,
   .score-item {

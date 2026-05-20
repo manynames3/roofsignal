@@ -11,9 +11,10 @@ This repository is a client-side MVP. It is suitable for portfolio demos, prospe
 - Sales landing page at `/`.
 - Report builder at `/app`.
 - Multiple roof photo upload with previews and file validation.
+- Photo evidence workflow with per-photo captions and rep-confirmed observation tags.
 - Property/job intake fields for roof age, material, leaks, existing solar, utility bill status, desired outcome, and rep notes.
 - Transparent rule-based scoring for roof age risk, visible condition risk, leak risk, urgency, solar readiness, data completeness, and lead quality.
-- Homeowner-friendly readiness report with transparent scores, homeowner questions, next action, and disclaimer.
+- Homeowner-friendly readiness report with transparent scores, photo evidence, homeowner questions, next action, and disclaimer.
 - Local report history, company branding fields, print-friendly output, copyable summaries, and demo scenarios.
 
 ## What is intentionally not built yet
@@ -23,7 +24,7 @@ This repository is a client-side MVP. It is suitable for portfolio demos, prospe
 - Hosted share links that work across devices.
 - Billing.
 - CRM integrations.
-- Real AI vision analysis.
+- Real AI vision analysis. The current product does not inspect image pixels automatically.
 
 ## Tech stack
 
@@ -80,11 +81,21 @@ Copy `.env.example` to `.env.local` if you are experimenting with future integra
 
 Honest claim today:
 
-> Generate a rule-based roof/solar readiness report from rep-entered job details and uploaded roof photos.
+> Generate a rule-based roof/solar readiness report from rep-entered job details, uploaded roof photos, and rep-confirmed photo evidence tags.
 
 Next production milestone:
 
 > Create branded, saved, shareable pre-appointment roof/solar readiness reports for every rep before quoting.
+
+## AI vision roadmap
+
+AI vision is intentionally future-facing, not active in this client-only MVP. The next implementation phase should:
+
+1. Add a server-side vision endpoint or backend function so provider keys are never exposed in the browser.
+2. Connect the existing `VisionAnalysisProvider` adapter to OpenAI, Anthropic, Gemini, or a custom provider.
+3. Return suggested photo observations using the same `PhotoEvidence` model used by the current rep-confirmed workflow.
+4. Require the rep to accept, edit, or reject suggested tags before they affect scoring or appear in a homeowner-facing report.
+5. Keep every report labeled as rule-based, vision-assisted, or manually confirmed so the app never implies a licensed inspection.
 
 ## Safety and trust language
 

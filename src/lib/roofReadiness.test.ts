@@ -96,6 +96,40 @@ describe("roof readiness scoring", () => {
     expect(visionUsed.assessmentMode).toBe("vision-assisted");
   });
 
+  it("includes photo evidence in the report without requiring AI vision", () => {
+    const report = analyzeRoofReadiness(
+      input({
+        photoEvidence: [
+          {
+            photoId: "photo-1",
+            fileName: "roof.jpg",
+            previewUrl: "blob:roof",
+            caption: "Lifted shingles near the rear slope.",
+            observations: ["curling-or-lifted-shingles"],
+            source: "rep-entered"
+          }
+        ]
+      })
+    );
+
+    expect(report.assessmentMode).toBe("rule-based");
+    expect(report.photoEvidence).toHaveLength(1);
+    expect(report.photoEvidence[0].caption).toBe("Lifted shingles near the rear slope.");
+    expect(report.keyObservations).toContain("1 photo evidence item tagged with visible observations.");
+  });
+
+  it("creates default photo evidence when captions are not provided", () => {
+    const report = analyzeRoofReadiness(input());
+
+    expect(report.photoEvidence).toHaveLength(1);
+    expect(report.photoEvidence[0]).toMatchObject({
+      photoId: "photo-1",
+      fileName: "roof.jpg",
+      caption: "Roof photo: roof",
+      source: "rep-entered"
+    });
+  });
+
   it("rejects unsupported and oversized files", () => {
     const pdf = new File(["x"], "roof.pdf", { type: "application/pdf" });
     const hugeJpg = new File([new Uint8Array(13 * 1024 * 1024)], "roof.jpg", { type: "image/jpeg" });
@@ -117,10 +151,13 @@ describe("roof readiness scoring", () => {
     const report = analyzeRoofReadiness({
       photos: scenario?.photos ?? [],
       details: scenario!.details,
+      photoEvidence: scenario!.photoEvidence,
       visionConfigured: false
     });
 
     expect(report.recommendation.status).toBe("replacement-first");
+    expect(report.photoEvidence).toHaveLength(6);
+    expect(report.photoEvidence[0].observations).toContain("granule-loss-or-bare-spots");
     expect(report.keyObservations[0]).toBe("6 roof photos uploaded.");
   });
 });

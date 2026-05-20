@@ -1,6 +1,7 @@
 import type {
   ConfidenceLevel,
   DesiredOutcome,
+  PhotoEvidence,
   PropertyDetails,
   ReadinessReport,
   RecommendationStatus,
@@ -252,6 +253,7 @@ export function analyzeRoofReadiness(input: RoofAssessmentInput): ReadinessRepor
     roofRiskFactors: buildRoofRiskFactors(input, scores),
     solarReadinessFactors: buildSolarReadinessFactors(input, scores),
     questionsToAsk: buildQuestions(input, recommendation.status),
+    photoEvidence: buildPhotoEvidence(input),
     suggestedTalkTrack: getTalkTrack(recommendation.status),
     disclaimer:
       "This report is a pre-appointment readiness assessment based on uploaded photos and homeowner-provided information. It does not replace a licensed roofer, engineer, inspector, insurance adjuster, utility, or permitting authority.",
@@ -259,10 +261,43 @@ export function analyzeRoofReadiness(input: RoofAssessmentInput): ReadinessRepor
   };
 }
 
+function buildPhotoEvidence(input: RoofAssessmentInput): PhotoEvidence[] {
+  const evidenceByPhotoId = new Map(input.photoEvidence?.map((item) => [item.photoId, item]));
+
+  return input.photos.map((photo) => {
+    const evidence = evidenceByPhotoId.get(photo.id);
+    return {
+      photoId: photo.id,
+      fileName: photo.fileName,
+      previewUrl: evidence?.previewUrl ?? photo.previewUrl,
+      caption: evidence?.caption.trim() || getDefaultPhotoCaption(photo.fileName),
+      observations: [...(evidence?.observations ?? [])],
+      source: evidence?.source ?? "rep-entered"
+    };
+  });
+}
+
+function getDefaultPhotoCaption(fileName: string): string {
+  const cleanName = fileName
+    .replace(/\.[a-z0-9]+$/i, "")
+    .replace(/[-_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return cleanName ? `Roof photo: ${cleanName}` : "Roof photo uploaded for readiness review.";
+}
+
 function buildKeyObservations(input: RoofAssessmentInput, scores: RoofRiskScores): string[] {
   const observations: string[] = [];
 
   observations.push(`${input.photos.length} roof photo${input.photos.length === 1 ? "" : "s"} uploaded.`);
+
+  const taggedPhotoCount = input.photoEvidence?.filter((item) => item.observations.length > 0).length ?? 0;
+  if (taggedPhotoCount > 0) {
+    observations.push(
+      `${taggedPhotoCount} photo evidence item${taggedPhotoCount === 1 ? "" : "s"} tagged with visible observations.`
+    );
+  }
 
   if (input.details.roofAgeYears === null) {
     observations.push("Roof age is unknown, which lowers confidence.");
