@@ -13,7 +13,7 @@ This repository is a client-side MVP. It is suitable for portfolio demos, prospe
 - Multiple roof photo upload with previews and file validation.
 - Property/job intake fields for roof age, material, leaks, existing solar, utility bill status, desired outcome, and rep notes.
 - Transparent rule-based scoring for roof age risk, visible condition risk, leak risk, urgency, solar readiness, data completeness, and lead quality.
-- Homeowner-friendly readiness report with rep guidance and disclaimer.
+- Homeowner-friendly readiness report with transparent scores, homeowner questions, next action, and disclaimer.
 - Local report history, company branding fields, print-friendly output, copyable summaries, and demo scenarios.
 
 ## What is intentionally not built yet

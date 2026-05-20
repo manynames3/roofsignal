@@ -149,8 +149,8 @@ function LandingPage() {
               <PreviewScore label="Lead quality" value="90" tone="positive" />
             </div>
             <div className="preview-guidance">
-              <span>Rep guidance</span>
-              <p>Before we talk panels, I want to make sure the roof underneath them is worth protecting.</p>
+              <span>Next best action</span>
+              <p>Schedule an in-person roof inspection and prepare a roof + solar bundle option.</p>
             </div>
           </div>
         </section>
@@ -194,7 +194,7 @@ function LandingPage() {
           <div className="steps-grid">
             <StepCard number="1" title="Upload roof photos" text="Use slope, shingles, valleys, gutters, flashing, wide exterior, and interior stain photos when available." />
             <StepCard number="2" title="Add job details" text="Enter roof age, material, leak status, existing solar, utility bill status, homeowner goal, and rep notes." />
-            <StepCard number="3" title="Generate the report" text="Save a branded readiness report with scores, sales path, rep guidance, questions, and print export." />
+            <StepCard number="3" title="Generate the report" text="Save a branded readiness report with scores, sales path, homeowner questions, next action, and print export." />
           </div>
         </section>
 
@@ -1278,20 +1278,6 @@ function ReportSection({
           <ReportBlock title="Questions to ask homeowner" items={report.questionsToAsk} />
         </div>
 
-        <section className="rep-guidance">
-          <div>
-            <p className="eyebrow">Rep Guidance</p>
-            <h3>Best path for the appointment</h3>
-          </div>
-          <div className="guidance-grid">
-            <GuidanceItem label="Best opening angle" value={report.repGuidance.openingAngle} />
-            <GuidanceItem label="What to avoid saying" value={report.repGuidance.avoidSaying} />
-            <GuidanceItem label="Recommended next step" value={report.repGuidance.recommendedNextStep} />
-            <GuidanceItem label="Suggested bundle opportunity" value={report.repGuidance.bundleOpportunity} />
-            <GuidanceItem label="Objection-handling notes" value={report.repGuidance.objectionHandlingNotes} />
-          </div>
-        </section>
-
         <section className="next-action">
           <div>
             <p className="eyebrow">Next Best Action</p>
@@ -1322,7 +1308,7 @@ function ReportPlaceholder({ visionConfigured }: { visionConfigured: boolean }) 
           <p className="eyebrow">Readiness report</p>
           <h2>Complete the job details, confirm limitations, and generate a saved homeowner-ready report.</h2>
           <p>
-            The report will include transparent scores, sales path recommendation, rep guidance, branded print export,
+            The report will include transparent scores, sales path recommendation, homeowner questions, branded print export,
             copyable summary, local history, and the required pre-appointment disclaimer.
           </p>
           <span className="pill muted">
@@ -1371,15 +1357,6 @@ function ReportBlock({ title, items }: { title: string; items: string[] }) {
         ))}
       </ul>
     </section>
-  );
-}
-
-function GuidanceItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="guidance-item">
-      <span>{label}</span>
-      <p>{value}</p>
-    </div>
   );
 }
 

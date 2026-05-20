@@ -4,7 +4,6 @@ import type {
   PropertyDetails,
   ReadinessReport,
   RecommendationStatus,
-  RepGuidance,
   RoofAssessmentInput,
   RoofMaterial,
   RoofRecommendation,
@@ -254,7 +253,6 @@ export function analyzeRoofReadiness(input: RoofAssessmentInput): ReadinessRepor
     solarReadinessFactors: buildSolarReadinessFactors(input, scores),
     questionsToAsk: buildQuestions(input, recommendation.status),
     suggestedTalkTrack: getTalkTrack(recommendation.status),
-    repGuidance: getRepGuidance(recommendation.status),
     disclaimer:
       "This report is a pre-appointment readiness assessment based on uploaded photos and homeowner-provided information. It does not replace a licensed roofer, engineer, inspector, insurance adjuster, utility, or permitting authority.",
     leadQualityScore: scoreLeadQuality(input, scores)
@@ -379,41 +377,6 @@ function getTalkTrack(status: RecommendationStatus): string {
   };
 
   return tracks[status];
-}
-
-function getRepGuidance(status: RecommendationStatus): RepGuidance {
-  const guidance: Record<RecommendationStatus, RepGuidance> = {
-    "solar-ready": {
-      openingAngle: "The roof inputs look favorable, so we can focus on solar fit and savings after a quick roof confirmation.",
-      avoidSaying: "This roof is approved for solar.",
-      recommendedNextStep: "Proceed with solar qualification and capture any final roof concerns during the appointment.",
-      bundleOpportunity: "Offer optional maintenance or warranty review as a confidence builder.",
-      objectionHandlingNotes: "If the homeowner worries about roof age, explain that final design should include roof confirmation before installation."
-    },
-    "repair-first": {
-      openingAngle: "A few roof items may be worth correcting before panels are installed.",
-      avoidSaying: "Your roof is bad.",
-      recommendedNextStep: "Offer a tune-up inspection and a small repair scope before final solar design.",
-      bundleOpportunity: "Position minor repairs as a way to protect the solar installation and reduce avoidable service calls.",
-      objectionHandlingNotes: "Frame the tune-up as risk reduction, not a scare tactic or blocker."
-    },
-    "replacement-first": {
-      openingAngle: "Before we talk panels, I want to make sure the roof underneath them is worth protecting.",
-      avoidSaying: "Your roof is failing.",
-      recommendedNextStep: "Offer roof inspection plus a roof/solar bundle quote.",
-      bundleOpportunity: "Position roof replacement as a way to protect the solar investment and avoid panel removal/reinstall costs.",
-      objectionHandlingNotes: "Use total project cost clarity: one coordinated scope can be cleaner than installing solar now and reroofing later."
-    },
-    "inspection-first": {
-      openingAngle: "I do not want to guess from incomplete roof information.",
-      avoidSaying: "We cannot help until you do more work.",
-      recommendedNextStep: "Book an in-person roof inspection and request clearer roof and attic photos.",
-      bundleOpportunity: "If inspection confirms roof age or wear, offer both roof-only and roof + solar paths.",
-      objectionHandlingNotes: "Position the inspection as protecting the homeowner from a rushed or poorly sequenced quote."
-    }
-  };
-
-  return guidance[status];
 }
 
 function scoreLeadQuality(input: RoofAssessmentInput, scores: RoofRiskScores): number {

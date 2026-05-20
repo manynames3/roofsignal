@@ -77,14 +77,6 @@ export interface RoofRecommendation {
   nextBestAction: string;
 }
 
-export interface RepGuidance {
-  openingAngle: string;
-  avoidSaying: string;
-  recommendedNextStep: string;
-  bundleOpportunity: string;
-  objectionHandlingNotes: string;
-}
-
 export interface ReadinessReport {
   generatedAt: string;
   assessmentMode: "rule-based" | "vision-assisted";
@@ -95,7 +87,6 @@ export interface ReadinessReport {
   solarReadinessFactors: string[];
   questionsToAsk: string[];
   suggestedTalkTrack: string;
-  repGuidance: RepGuidance;
   disclaimer: string;
   leadQualityScore: number;
 }
