@@ -65,6 +65,10 @@ For Cloudflare Pages:
 - Framework preset: Vite
 - Build command: `npm run build`
 - Build output directory: `dist`
+- Production branch: `main`
+- Current production URL: `https://roofsignal-readiness-agent.pages.dev`
+
+This repo is connected to Cloudflare Pages for automatic deployments. Pushing to `main` triggers the production build; other branches can create preview builds.
 
 ## Environment variables
 
