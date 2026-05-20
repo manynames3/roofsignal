@@ -117,13 +117,12 @@ function LandingPage() {
   return (
     <div className="landing-shell">
       <header className="landing-topbar">
-        <a className="brand-lockup" href="/" aria-label="RoofSignal home">
+        <a className="brand-lockup" href="/" aria-label="Roof Signal home">
           <div className="brand-mark">
             <Home size={22} />
           </div>
           <div>
-            <p className="eyebrow">RoofSignal</p>
-            <strong>Roof/Solar Readiness Agent</strong>
+            <strong>Roof Signal</strong>
           </div>
         </a>
         <nav className="landing-nav" aria-label="Landing page navigation">
@@ -142,7 +141,7 @@ function LandingPage() {
             <span className="eyebrow">For roof + solar sales teams</span>
             <h1>Stop pitching solar before you know if the roof changes the sale.</h1>
             <p>
-              RoofSignal helps reps turn roof photos and basic job details into a pre-appointment readiness report:
+              Roof Signal helps reps turn roof photos and basic job details into a pre-appointment readiness report:
               solar-first, roof tune-up first, replacement-first, or inspection-first.
             </p>
             <div className="hero-actions">
@@ -237,7 +236,7 @@ function LandingPage() {
             <Objection title="ChatGPT" text="It can draft text, but it does not enforce a repeatable roof/solar scoring workflow or sales-path output." />
             <Objection title="Spreadsheets" text="They can store fields, but they do not produce a homeowner-ready report, talk track, and next-best-action." />
             <Objection title="Zapier or n8n" text="They move data between tools. They do not decide whether the rep should lead solar, repair, replacement, or inspection." />
-            <Objection title="Manual review" text="It depends on the rep. RoofSignal makes the triage consistent enough to review, train, and improve." />
+            <Objection title="Manual review" text="It depends on the rep. Roof Signal makes the triage consistent enough to review, train, and improve." />
           </div>
         </section>
 
@@ -769,8 +768,7 @@ function ReadinessApp() {
             <Home size={22} />
           </div>
           <div>
-            <p className="eyebrow">RoofSignal</p>
-            <h1>Roof/Solar Readiness Agent</h1>
+            <h1>Roof Signal</h1>
           </div>
         </div>
         <div className="topbar-actions">
@@ -1729,7 +1727,7 @@ function buildClipboardSummary(report: ReadinessReport, details: PropertyDetails
     : [];
 
   return [
-    `${company.companyName || "RoofSignal"} Readiness Report`,
+    `${company.companyName || "Roof Signal"} Readiness Report`,
     `Homeowner: ${details.homeownerName || "Pending"}`,
     `Property: ${details.propertyAddress || "Pending"}`,
     `Status: ${formatRecommendationStatus(report.recommendation.status)}`,

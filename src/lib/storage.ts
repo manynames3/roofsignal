@@ -4,7 +4,7 @@ const REPORTS_KEY = "roofsignal.savedReports.v1";
 const COMPANY_KEY = "roofsignal.companyProfile.v1";
 
 export const defaultCompanyProfile: CompanyProfile = {
-  companyName: "RoofSignal Demo Company",
+  companyName: "Roof Signal Demo Company",
   repName: "",
   phone: "",
   email: "",

@@ -1,6 +1,6 @@
-# RoofSignal Readiness Agent
+# Roof Signal
 
-RoofSignal is a pre-appointment roof and solar readiness workflow for roofing, solar, and roof+solar sales teams. Reps upload roof photos, enter basic job details, and generate a homeowner-friendly report that recommends whether to lead with solar, roof tune-up, roof replacement, or in-person inspection.
+Roof Signal is a pre-appointment roof and solar readiness workflow for roofing, solar, and roof+solar sales teams. Reps upload roof photos, enter basic job details, and generate a homeowner-friendly report that recommends whether to lead with solar, roof tune-up, roof replacement, or in-person inspection.
 
 ## Current product status
 
@@ -99,4 +99,4 @@ AI vision is intentionally future-facing, not active in this client-only MVP. Th
 
 ## Safety and trust language
 
-RoofSignal provides visible-risk triage and sales sequencing guidance. A qualified roof professional should confirm roof condition before final roof or solar scope. The product should not be positioned as a replacement for a licensed roofer, engineer, inspector, insurance adjuster, utility, or permitting authority.
+Roof Signal provides visible-risk triage and sales sequencing guidance. A qualified roof professional should confirm roof condition before final roof or solar scope. The product should not be positioned as a replacement for a licensed roofer, engineer, inspector, insurance adjuster, utility, or permitting authority.
