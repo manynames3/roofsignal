@@ -31,6 +31,27 @@ import {
   Zap
 } from "lucide-react";
 import { demoScenarios, type DemoScenario } from "./demoData";
+import {
+  attachAwsPhotoStorage,
+  clearAwsAuthSession,
+  consumeAuthSessionFromUrl,
+  createAwsReport,
+  createAwsShareLink,
+  deleteAwsReport,
+  downloadCsv,
+  getAwsCrmExport,
+  getAwsLoginUrl,
+  getAwsLogoutUrl,
+  getAwsReport,
+  getSharedAwsReport,
+  isAwsBackendConfigured,
+  listAwsReports,
+  requestAwsPhotoEvidenceSuggestions,
+  requestAwsSolarEstimate,
+  submitAccessRequest,
+  type AccessRequestInput,
+  type AwsAuthSession
+} from "./lib/awsBackend";
 import { requestGeminiPhotoEvidenceSuggestions } from "./lib/geminiPhotoEvidenceClient";
 import {
   analyzeRoofReadiness,
@@ -264,8 +285,8 @@ function LandingPage() {
             <h2>Clear about what it does and what it does not do.</h2>
           </div>
           <div className="trust-grid">
-            <TrustItem icon={<ShieldCheck size={21} />} title="Rule-based MVP today" text="Recommendations come from transparent scoring, not hidden or fake AI results." />
-            <TrustItem icon={<LockKeyhole size={21} />} title="Client-side pilot mode" text="Saved reports and branding are stored in this browser for demos. Hosted accounts are not built yet." />
+            <TrustItem icon={<ShieldCheck size={21} />} title="Transparent recommendations" text="Recommendations come from transparent scoring, with Gemini suggestions kept as rep-confirmed draft evidence." />
+            <TrustItem icon={<LockKeyhole size={21} />} title="AWS hosted path" text="Hosted accounts use Cognito, private S3 photo storage, DynamoDB report records, and expiring share links." />
             <TrustItem icon={<FileText size={21} />} title="No inspection claim" text="Reports are pre-appointment triage and do not replace a licensed roofer, engineer, inspector, utility, or permitting authority." />
           </div>
         </section>
@@ -273,21 +294,13 @@ function LandingPage() {
         <section className="landing-section access-section">
           <div>
             <p className="eyebrow">Access</p>
-            <h2>Use the builder now, or request a paid pilot when hosted reports are ready.</h2>
+            <h2>Use the builder now, or request a controlled hosted pilot.</h2>
             <p>
-              Billing is not live in this repo. The right next commercial step is a small paid pilot with branded reports,
-              saved history, and hosted share links.
+              Billing is not live yet. Hosted pilots are invite-only so each company gets separated accounts,
+              private photo storage, saved reports, and expiring share links.
             </p>
           </div>
-          <div className="access-actions">
-            <a className="button primary" href="/app">
-              Launch prefilled demo
-              <ArrowRight size={18} />
-            </a>
-            <a className="button secondary" href="/app?blank=1#workflow">
-              Start blank report
-            </a>
-          </div>
+          <RequestAccessForm />
         </section>
 
         <section id="faq" className="landing-section faq-section">
@@ -295,10 +308,10 @@ function LandingPage() {
           <h2>Questions a sales manager will ask.</h2>
           <div className="faq-grid">
             <FaqItem title="Who is this for?" text="Residential roofing, solar, and roof+solar teams that need a consistent pre-appointment triage workflow." />
-            <FaqItem title="What setup is required?" text="For the current MVP, no account is required. Open the builder, load a demo or upload photos, enter job details, and generate a local report." />
-            <FaqItem title="Is my data safe?" text="The current demo stores saved reports in the browser local storage. Do not treat it as production storage for sensitive homeowner data until backend privacy controls are added." />
+            <FaqItem title="What setup is required?" text="The demo works without an account. Hosted pilots use Cognito invite-only sign-in and company-specific report storage." />
+            <FaqItem title="Is my data safe?" text="Hosted mode stores reports in DynamoDB and photos in a private S3 bucket with presigned links. Demo mode can still store reports locally in this browser." />
             <FaqItem title="What does this replace?" text="It replaces loose pre-appointment notes, inconsistent rep judgment, and manual roof/solar sales-path checklists." />
-            <FaqItem title="What does it not do yet?" text="It does not provide hosted accounts, cross-device report links, billing, CRM sync, or licensed inspection conclusions." />
+            <FaqItem title="What does it not do yet?" text="It does not process payments, push directly into a CRM, or make licensed inspection conclusions." />
             <FaqItem title="How is this different from generic AI tools?" text="It is a specific workflow with constrained outputs, sales guidance, transparent scores, and homeowner-safe disclaimers." />
           </div>
         </section>
@@ -405,6 +418,69 @@ function FaqItem({ title, text }: { title: string; text: string }) {
   );
 }
 
+function RequestAccessForm() {
+  const [input, setInput] = useState<AccessRequestInput>({
+    name: "",
+    email: "",
+    companyName: "",
+    phone: "",
+    notes: ""
+  });
+  const [status, setStatus] = useState<Notice>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const awsReady = isAwsBackendConfigured();
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!awsReady) {
+      setStatus({ type: "warning", message: "Hosted request intake is enabled after AWS environment variables are configured." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await submitAccessRequest(input);
+      setStatus({ type: "success", message: "Request received. Create a Cognito invite for this company to start the hosted pilot." });
+      setInput({ name: "", email: "", companyName: "", phone: "", notes: "" });
+    } catch (error) {
+      setStatus({ type: "error", message: error instanceof Error ? error.message : "Could not submit request." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <form className="access-form" onSubmit={handleSubmit}>
+      <div className="field-grid">
+        <TextField label="Name" value={input.name} onChange={(value) => setInput((current) => ({ ...current, name: value }))} placeholder="Alex Morgan" />
+        <TextField label="Work email" value={input.email} onChange={(value) => setInput((current) => ({ ...current, email: value }))} placeholder="alex@roofcompany.com" />
+        <TextField label="Company" value={input.companyName} onChange={(value) => setInput((current) => ({ ...current, companyName: value }))} placeholder="Summit Roof + Solar" />
+        <TextField label="Phone" value={input.phone} onChange={(value) => setInput((current) => ({ ...current, phone: value }))} placeholder="(555) 014-9000" />
+      </div>
+      <label className="field">
+        <span>Pilot notes</span>
+        <textarea
+          value={input.notes}
+          onChange={(event) => setInput((current) => ({ ...current, notes: event.target.value }))}
+          placeholder="Team size, market, CRM, and whether you sell roof + solar bundles."
+          rows={3}
+        />
+      </label>
+      {status ? <NoticeBanner notice={status} onDismiss={() => setStatus(null)} /> : null}
+      <div className="access-actions">
+        <button className="button primary" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? <Loader2 size={18} className="spin" /> : <ArrowRight size={18} />}
+          Request hosted pilot
+        </button>
+        <a className="button secondary" href="/app">
+          Launch demo
+        </a>
+      </div>
+    </form>
+  );
+}
+
 function ReadinessApp() {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [photoEvidence, setPhotoEvidence] = useState<PhotoEvidence[]>([]);
@@ -420,9 +496,14 @@ function ReadinessApp() {
   const [limitsAccepted, setLimitsAccepted] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSuggestingPhotoEvidence, setIsSuggestingPhotoEvidence] = useState(false);
+  const [awsAuth, setAwsAuth] = useState<AwsAuthSession | null>(null);
+  const [isLoadingCloudReports, setIsLoadingCloudReports] = useState(false);
+  const [isExportingCrm, setIsExportingCrm] = useState(false);
 
   const visionConfigured = isVisionAnalysisConfigured();
-  const pvWattsConfigured = isPvWattsConfigured();
+  const awsConfigured = isAwsBackendConfigured();
+  const cloudMode = awsConfigured && Boolean(awsAuth);
+  const pvWattsConfigured = cloudMode || isPvWattsConfigured();
   const readinessChecks = useMemo(
     () => getReadinessChecks(photos, details, solarAssumptions, photoEvidence),
     [photos, details, solarAssumptions, photoEvidence]
@@ -438,16 +519,37 @@ function ReadinessApp() {
   );
 
   useEffect(() => {
+    const session = awsConfigured ? consumeAuthSessionFromUrl() : null;
     const reports = loadSavedReports();
     const profile = loadCompanyProfile();
     const params = new URLSearchParams(window.location.search);
     const reportId = params.get("report");
+    const shareId = params.get("share");
     const demoId = params.get("demo");
     const shouldStartBlank = params.get("blank") === "1";
     const linkedReport = reportId ? reports.find((report) => report.id === reportId) : null;
 
+    setAwsAuth(session);
     setSavedReports(reports);
     setCompany(profile);
+
+    if (shareId && awsConfigured) {
+      void loadSharedCloudReport(shareId);
+      return;
+    }
+
+    if (session) {
+      void refreshCloudReports(session, reportId);
+      if (!reportId && !demoId && !shouldStartBlank) {
+        loadDemoScenario(defaultDemoScenarioId, {
+          companyOverride: profile,
+          generateReport: true,
+          updateUrl: false,
+          message: "Signed in. Cloud reports are loading; demo report shown for the walkthrough."
+        });
+      }
+      return;
+    }
 
     if (linkedReport) {
       setActiveReport(linkedReport);
@@ -469,6 +571,65 @@ function ReadinessApp() {
       });
     }
   }, []);
+
+  async function refreshCloudReports(session: AwsAuthSession = awsAuth!, reportId?: string | null) {
+    if (!session) return;
+
+    setIsLoadingCloudReports(true);
+    try {
+      const cloudReports = await listAwsReports(session);
+      setSavedReports(cloudReports);
+
+      const linkedReport = reportId ? cloudReports.find((report) => report.id === reportId) : null;
+      if (linkedReport) {
+        hydrateLoadedReport(linkedReport);
+        setNotice({ type: "success", message: "Loaded hosted report from AWS." });
+      }
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not load hosted reports."
+      });
+    } finally {
+      setIsLoadingCloudReports(false);
+    }
+  }
+
+  async function loadSharedCloudReport(shareId: string) {
+    try {
+      const sharedReport = await getSharedAwsReport(shareId);
+      hydrateLoadedReport(sharedReport);
+      setSavedReports([]);
+      setIsDemoMode(false);
+      setActiveDemoScenarioId(null);
+      setLimitsAccepted(true);
+      setNotice({ type: "success", message: "Loaded hosted share link." });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "That hosted share link is not available."
+      });
+      clearAppUrl();
+    }
+  }
+
+  function hydrateLoadedReport(saved: SavedReadinessReport) {
+    setActiveReport(saved);
+    setDetails(saved.details);
+    setPhotoEvidence(saved.report.photoEvidence ?? []);
+    setPhotos([]);
+    setLimitsAccepted(true);
+  }
+
+  function signInWithAws() {
+    window.location.href = getAwsLoginUrl();
+  }
+
+  function signOutOfAws() {
+    clearAwsAuthSession();
+    setAwsAuth(null);
+    window.location.href = getAwsLogoutUrl();
+  }
 
   function updateDetails<K extends keyof PropertyDetails>(key: K, value: PropertyDetails[K]) {
     setDetails((current) => ({ ...current, [key]: value }));
@@ -617,7 +778,9 @@ function ReadinessApp() {
     clearReportUrl();
 
     try {
-      const result = await requestGeminiPhotoEvidenceSuggestions(photos);
+      const result = cloudMode && awsAuth
+        ? await requestAwsPhotoEvidenceSuggestions(awsAuth, photos)
+        : await requestGeminiPhotoEvidenceSuggestions(photos);
 
       if (!result.configured) {
         setNotice({
@@ -780,62 +943,91 @@ function ReadinessApp() {
       const evidenceForPhotos = syncPhotoEvidenceForPhotos(photos, photoEvidence);
       const reportableEvidence = getReportablePhotoEvidence(evidenceForPhotos);
       const detailsForReport = applyPhotoEvidenceToDetails(details, reportableEvidence);
-      const solarOpportunity = await analyzeSolarOpportunity(detailsForReport, solarAssumptions);
+      const solarOpportunity = cloudMode && awsAuth
+        ? await requestAwsSolarEstimate(awsAuth, detailsForReport, solarAssumptions)
+        : await analyzeSolarOpportunity(detailsForReport, solarAssumptions);
+      const storedEvidence = cloudMode && awsAuth
+        ? await attachAwsPhotoStorage(awsAuth, photos, reportableEvidence)
+        : reportableEvidence;
       const report = analyzeRoofReadiness({
         photos,
         details: detailsForReport,
-        photoEvidence: reportableEvidence,
+        photoEvidence: storedEvidence,
         solarOpportunity,
         visionConfigured,
         visionObservationUsed: false
       });
       const saved = buildSavedReport(report, detailsForReport, photos, company);
-      const nextReports = saveReport(stripSessionPhotoUrls(saved));
+      const persisted = cloudMode && awsAuth ? await createAwsReport(awsAuth, stripSessionPhotoUrls(saved)) : saved;
+      const nextReports = cloudMode && awsAuth ? await listAwsReports(awsAuth) : saveReport(stripSessionPhotoUrls(saved));
 
       setSavedReports(nextReports);
-      setActiveReport(saved);
+      setActiveReport(cloudMode && awsAuth ? persisted : saved);
       setDetails(detailsForReport);
-      setPhotoEvidence(evidenceForPhotos);
+      setPhotoEvidence(syncPhotoEvidenceForPhotos(photos, storedEvidence));
       setIsDemoMode(false);
       setActiveDemoScenarioId(null);
       setNotice({
         type: "success",
         message:
           solarOpportunity.source === "nrel-pvwatts"
-            ? "Report generated with NREL PVWatts solar estimate and saved locally."
-            : "Report generated with local solar opportunity estimate and saved locally."
+            ? `Report generated with NREL PVWatts solar estimate and saved ${cloudMode ? "to AWS" : "locally"}.`
+            : `Report generated with local solar opportunity estimate and saved ${cloudMode ? "to AWS" : "locally"}.`
       });
-      setReportUrl(saved.id);
+      setReportUrl((cloudMode && awsAuth ? persisted : saved).id);
       requestAnimationFrame(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }));
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not generate the report."
+      });
     } finally {
       setIsAnalyzing(false);
     }
   }
 
-  function loadReport(reportId: string) {
-    const saved = findSavedReport(reportId);
+  async function loadReport(reportId: string) {
+    const saved = cloudMode && awsAuth ? await getAwsReportSafe(awsAuth, reportId) : findSavedReport(reportId);
     if (!saved) {
-      setNotice({ type: "error", message: "That saved report is no longer available in this browser." });
+      setNotice({ type: "error", message: cloudMode ? "That hosted report is no longer available." : "That saved report is no longer available in this browser." });
       return;
     }
 
-    setActiveReport(saved);
-    setDetails(saved.details);
-    setPhotoEvidence(saved.report.photoEvidence ?? []);
-    setPhotos([]);
-    setLimitsAccepted(true);
+    hydrateLoadedReport(saved);
     setIsDemoMode(false);
     setActiveDemoScenarioId(null);
     setReportUrl(saved.id);
     setNotice({
       type: "success",
-      message: "Saved report loaded. Uploaded image bytes are not stored; photo evidence keeps file names, captions, and tags."
+      message: cloudMode
+        ? "Hosted report loaded with private photo links."
+        : "Saved report loaded. Uploaded image bytes are not stored; photo evidence keeps file names, captions, and tags."
     });
     requestAnimationFrame(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }));
   }
 
-  function removeSavedReport(reportId: string) {
-    const nextReports = deleteReport(reportId);
+  async function getAwsReportSafe(session: AwsAuthSession, reportId: string) {
+    try {
+      return await getAwsReport(session, reportId);
+    } catch {
+      return null;
+    }
+  }
+
+  async function removeSavedReport(reportId: string) {
+    let nextReports: SavedReadinessReport[];
+    try {
+      nextReports = cloudMode && awsAuth
+        ? await deleteAwsReport(awsAuth, reportId).then(() => savedReports.filter((report) => report.id !== reportId))
+        : deleteReport(reportId);
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not delete that report."
+      });
+      return;
+    }
+
     setSavedReports(nextReports);
 
     if (activeReport?.id === reportId) {
@@ -843,7 +1035,7 @@ function ReadinessApp() {
       clearReportUrl();
     }
 
-    setNotice({ type: "success", message: "Saved report deleted." });
+    setNotice({ type: "success", message: cloudMode ? "Hosted report deleted." : "Saved report deleted." });
   }
 
   async function copySummary() {
@@ -861,6 +1053,16 @@ function ReadinessApp() {
     if (!activeReport) return;
 
     try {
+      if (cloudMode && awsAuth && !activeReport.id.startsWith("demo-")) {
+        const share = await createAwsShareLink(awsAuth, activeReport.id);
+        const url = new URL(window.location.origin + window.location.pathname);
+        url.searchParams.set("share", share.shareId);
+        url.hash = "report";
+        await navigator.clipboard.writeText(url.toString());
+        setNotice({ type: "success", message: "Hosted share link copied. It works across devices until it expires." });
+        return;
+      }
+
       const url = new URL(window.location.href);
       if (activeDemoScenarioId && !savedReports.some((report) => report.id === activeReport.id)) {
         url.searchParams.delete("report");
@@ -882,6 +1084,30 @@ function ReadinessApp() {
     }
   }
 
+  async function exportCrmCsv() {
+    if (!activeReport) return;
+
+    if (!cloudMode || !awsAuth) {
+      downloadCsv(`${activeReport.id}-crm-export.csv`, buildCrmCsv(activeReport));
+      setNotice({ type: "success", message: "CRM-ready CSV downloaded." });
+      return;
+    }
+
+    setIsExportingCrm(true);
+    try {
+      const result = await getAwsCrmExport(awsAuth, activeReport.id);
+      downloadCsv(result.fileName, result.csv);
+      setNotice({ type: "success", message: "CRM-ready CSV exported from AWS." });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not export CRM CSV."
+      });
+    } finally {
+      setIsExportingCrm(false);
+    }
+  }
+
   const workflowSteps = isDemoMode
     ? ["Review demo inputs", "Show recommendation", "Explain scores", "Print or share"]
     : ["Upload photos", "Add job details", "Confirm limits", "Generate report"];
@@ -898,8 +1124,23 @@ function ReadinessApp() {
           </div>
         </div>
         <div className="topbar-actions">
-          <span className="pill muted">Client-side pilot MVP</span>
+          <span className="pill muted">{cloudMode ? "AWS hosted mode" : awsConfigured ? "AWS ready - sign in" : "Client-side pilot MVP"}</span>
           <span className="pill success">Rule-based triage active</span>
+          {awsConfigured ? (
+            awsAuth ? (
+              <>
+                <span className="pill muted">{awsAuth.email || "Signed in"}</span>
+                <button className="button secondary compact-button" type="button" onClick={signOutOfAws}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <button className="button primary compact-button" type="button" onClick={signInWithAws}>
+                <LockKeyhole size={16} />
+                Sign in
+              </button>
+            )
+          ) : null}
         </div>
       </header>
 
@@ -959,7 +1200,14 @@ function ReadinessApp() {
         <section className="ops-grid">
           <CompanySettings company={company} onChange={updateCompany} />
           <DemoScenarioPanel onApply={applyDemoScenario} />
-          <SavedReportList reports={savedReports} activeId={activeReport?.id} onLoad={loadReport} onDelete={removeSavedReport} />
+          <SavedReportList
+            reports={savedReports}
+            activeId={activeReport?.id}
+            hosted={cloudMode}
+            isLoading={isLoadingCloudReports}
+            onLoad={loadReport}
+            onDelete={removeSavedReport}
+          />
         </section>
 
         <form id="workflow" className="workflow-grid" onSubmit={handleAnalyze}>
@@ -1097,7 +1345,9 @@ function ReadinessApp() {
             <div className="analyze-row">
               <div className="mode-note">
                 <Sparkles size={18} />
-                {visionConfigured
+                {cloudMode
+                  ? "AWS hosted mode: reports save to DynamoDB, photos upload privately to S3, Gemini and NREL run server-side."
+                  : visionConfigured
                   ? "Vision adapter flag is enabled. Confirm any suggested photo tags before generating."
                   : "Rule-based report. Gemini photo suggestions are optional and must be confirmed before scoring."}
               </div>
@@ -1114,6 +1364,9 @@ function ReadinessApp() {
             savedReport={activeReport}
             onCopy={copySummary}
             onCopyLink={copyLocalLink}
+            onExportCrm={exportCrmCsv}
+            isExportingCrm={isExportingCrm}
+            shareLabel={cloudMode ? "Copy hosted link" : "Copy local link"}
           />
         ) : (
           <ReportPlaceholder visionConfigured={visionConfigured} />
@@ -1254,19 +1507,27 @@ function DemoScenarioPanel({ onApply }: { onApply: (scenarioId: string) => void 
 function SavedReportList({
   reports,
   activeId,
+  hosted,
+  isLoading,
   onLoad,
   onDelete
 }: {
   reports: SavedReadinessReport[];
   activeId?: string;
+  hosted: boolean;
+  isLoading: boolean;
   onLoad: (reportId: string) => void;
   onDelete: (reportId: string) => void;
 }) {
   return (
     <section className="panel mini-panel">
-      <SectionHeader icon={<FolderOpen size={20} />} title="Saved reports" subtitle="Client-only history for pilot demos." />
+      <SectionHeader
+        icon={isLoading ? <Loader2 size={20} className="spin" /> : <FolderOpen size={20} />}
+        title="Saved reports"
+        subtitle={hosted ? "Hosted AWS reports for this company." : "Client-only history for pilot demos."}
+      />
       {reports.length === 0 ? (
-        <div className="empty-list">No saved reports yet.</div>
+        <div className="empty-list">{isLoading ? "Loading reports..." : "No saved reports yet."}</div>
       ) : (
         <div className="saved-list">
           {reports.slice(0, 5).map((report) => (
@@ -1640,11 +1901,17 @@ function ReadinessCheckList({ checks }: { checks: string[] }) {
 function ReportSection({
   savedReport,
   onCopy,
-  onCopyLink
+  onCopyLink,
+  onExportCrm,
+  isExportingCrm,
+  shareLabel
 }: {
   savedReport: SavedReadinessReport;
   onCopy: () => void;
   onCopyLink: () => void;
+  onExportCrm: () => void;
+  isExportingCrm: boolean;
+  shareLabel: string;
 }) {
   const { report, details, company } = savedReport;
   const theme = statusTheme[report.recommendation.status];
@@ -1663,7 +1930,11 @@ function ReportSection({
           </button>
           <button className="button secondary" type="button" onClick={onCopyLink}>
             <Share2 size={17} />
-            Copy local link
+            {shareLabel}
+          </button>
+          <button className="button secondary" type="button" onClick={onExportCrm} disabled={isExportingCrm}>
+            {isExportingCrm ? <Loader2 size={17} className="spin" /> : <FileDown size={17} />}
+            CRM CSV
           </button>
           <button className="button secondary" type="button" onClick={() => window.print()}>
             <Printer size={17} />
@@ -1944,6 +2215,7 @@ function syncPhotoEvidenceForPhotos(photos: UploadedPhoto[], evidence: PhotoEvid
       photoId: photo.id,
       fileName: photo.fileName,
       previewUrl: existing?.previewUrl ?? photo.previewUrl,
+      storageKey: existing?.storageKey,
       caption: existing?.caption ?? getDefaultPhotoCaption(photo.fileName),
       observations: [...(existing?.observations ?? [])],
       source: existing?.source ?? "rep-entered"
@@ -2134,6 +2406,46 @@ function buildClipboardSummary(report: ReadinessReport, details: PropertyDetails
     ...photoEvidenceLines,
     `Disclaimer: ${report.disclaimer}`
   ].join("\n");
+}
+
+function buildCrmCsv(savedReport: SavedReadinessReport): string {
+  const recommendation = savedReport.report.recommendation;
+  const row = [
+    savedReport.id,
+    savedReport.createdAt,
+    savedReport.details.homeownerName,
+    savedReport.details.propertyAddress,
+    recommendation.status,
+    recommendation.confidence,
+    String(savedReport.report.leadQualityScore),
+    recommendation.recommendedSalesPath,
+    recommendation.nextBestAction,
+    savedReport.company.repName,
+    savedReport.company.email,
+    savedReport.company.companyName
+  ];
+
+  return [
+    [
+      "report_id",
+      "created_at",
+      "homeowner_name",
+      "property_address",
+      "status",
+      "confidence",
+      "lead_quality_score",
+      "recommended_sales_path",
+      "next_best_action",
+      "rep_name",
+      "rep_email",
+      "company"
+    ].join(","),
+    row.map(csvCell).join(",")
+  ].join("\n");
+}
+
+function csvCell(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function createId(): string {

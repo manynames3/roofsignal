@@ -57,6 +57,7 @@ export interface PhotoEvidence {
   photoId: string;
   fileName: string;
   previewUrl?: string;
+  storageKey?: string;
   caption: string;
   observations: VisibleConditionFlag[];
   source: PhotoEvidenceSource;

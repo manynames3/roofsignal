@@ -510,6 +510,11 @@ main {
   box-shadow: 0 12px 36px rgba(25, 38, 31, 0.06);
 }
 
+.access-form {
+  display: grid;
+  gap: 14px;
+}
+
 .access-actions {
   display: flex;
   gap: 10px;
