@@ -25,6 +25,8 @@ export interface AwsAuthSession {
   accessToken: string;
   idToken: string;
   email: string;
+  companyId: string;
+  role: string;
   expiresAt: number;
 }
 
@@ -102,6 +104,8 @@ export function consumeAuthSessionFromUrl(): AwsAuthSession | null {
     accessToken,
     idToken,
     email: String(idPayload.email ?? accessPayload.email ?? ""),
+    companyId: String(idPayload["custom:companyId"] ?? accessPayload["custom:companyId"] ?? ""),
+    role: String(idPayload["custom:role"] ?? accessPayload["custom:role"] ?? "admin"),
     expiresAt: Number(accessPayload.exp ?? idPayload.exp ?? 0)
   };
 

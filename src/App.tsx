@@ -86,9 +86,12 @@ import type {
   CompanyProfile,
   KnownStatus,
   PhotoEvidence,
+  PhotoEvidenceAnalysis,
+  PhotoRiskLevel,
   PropertyDetails,
   ReadinessReport,
   RecommendationStatus,
+  ReportAuditEvent,
   RoofOrientation,
   RoofRiskScores,
   SavedReadinessReport,
@@ -123,6 +126,13 @@ const photoTagLabels: Record<VisibleConditionFlag, string> = {
   "sagging-or-soft-decking": "Decking concern",
   "interior-staining": "Interior stain",
   "limited-or-unclear-photos": "Limited/unclear"
+};
+
+const photoRiskLabels: Record<PhotoRiskLevel, string> = {
+  clear: "Clear",
+  monitor: "Monitor",
+  "repair-review": "Repair review",
+  "inspection-review": "Inspection review"
 };
 
 const statusTheme: Record<RecommendationStatus, { tone: string; icon: ReactNode }> = {
@@ -888,7 +898,7 @@ function ReadinessApp() {
         visionObservationUsed: false
       });
       setActiveReport({
-        ...buildSavedReport(report, demoDetails, demoPhotos, demoCompany),
+        ...buildSavedReport(report, demoDetails, demoPhotos, demoCompany, { storageMode: "demo" }),
         id: `demo-${scenario.id}`,
         title: `${demoDetails.homeownerName} - ${demoDetails.propertyAddress}`
       });
@@ -957,7 +967,9 @@ function ReadinessApp() {
         visionConfigured,
         visionObservationUsed: false
       });
-      const saved = buildSavedReport(report, detailsForReport, photos, company);
+      const saved = buildSavedReport(report, detailsForReport, photos, company, {
+        storageMode: cloudMode && awsAuth ? "hosted" : "local"
+      });
       const persisted = cloudMode && awsAuth ? await createAwsReport(awsAuth, stripSessionPhotoUrls(saved)) : saved;
       const nextReports = cloudMode && awsAuth ? await listAwsReports(awsAuth) : saveReport(stripSessionPhotoUrls(saved));
 
@@ -1199,6 +1211,7 @@ function ReadinessApp() {
 
         <section className="ops-grid">
           <CompanySettings company={company} onChange={updateCompany} />
+          <HostedControlsPanel awsConfigured={awsConfigured} cloudMode={cloudMode} auth={awsAuth} />
           <DemoScenarioPanel onApply={applyDemoScenario} />
           <SavedReportList
             reports={savedReports}
@@ -1367,6 +1380,7 @@ function ReadinessApp() {
             onExportCrm={exportCrmCsv}
             isExportingCrm={isExportingCrm}
             shareLabel={cloudMode ? "Copy hosted link" : "Copy local link"}
+            hosted={cloudMode}
           />
         ) : (
           <ReportPlaceholder visionConfigured={visionConfigured} />
@@ -1488,6 +1502,45 @@ function CompanySettings({
   );
 }
 
+function HostedControlsPanel({
+  awsConfigured,
+  cloudMode,
+  auth
+}: {
+  awsConfigured: boolean;
+  cloudMode: boolean;
+  auth: AwsAuthSession | null;
+}) {
+  const modeLabel = cloudMode ? "Hosted workspace active" : awsConfigured ? "Hosted workspace available" : "Local demo mode";
+
+  return (
+    <section className="panel mini-panel">
+      <SectionHeader icon={<ShieldCheck size={20} />} title="Admin controls" subtitle="Visible trust controls for team pilots." />
+      <div className="control-status">
+        <strong>{modeLabel}</strong>
+        <span>{cloudMode ? `Company scope: ${auth?.companyId || "Cognito company"}` : "Sign in to use company-separated hosted reports."}</span>
+      </div>
+      <div className="control-list">
+        <div>
+          <span>Team roles</span>
+          <strong>{cloudMode ? `${auth?.role || "admin"} role active` : "Invite-only Cognito users"}</strong>
+          <p>Company/team separation uses Cognito custom company IDs. Admin and rep role UI is the next management layer.</p>
+        </div>
+        <div>
+          <span>Retention</span>
+          <strong>90-day reports/photos</strong>
+          <p>Hosted reports expire in DynamoDB, photos expire in private S3, and report links expire after 30 days.</p>
+        </div>
+        <div>
+          <span>Audit trail</span>
+          <strong>Per-report events</strong>
+          <p>Generated reports now show source, scoring, solar, storage, and export-ready audit context.</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function DemoScenarioPanel({ onApply }: { onApply: (scenarioId: string) => void }) {
   return (
     <section className="panel mini-panel">
@@ -1602,18 +1655,28 @@ function PhotoEvidenceEditor({
   }
 
   const evidenceByPhotoId = new Map(evidence.map((item) => [item.photoId, item]));
+  const confirmedEvidence = evidence.filter((item) => item.source !== "vision-suggested");
+  const confirmedTags = confirmedEvidence.reduce((sum, item) => sum + item.observations.length, 0);
+  const riskSignals = confirmedEvidence.flatMap((item) => item.observations).filter((flag) => flag !== "no-obvious-damage").length;
+  const suggestedCount = evidence.filter((item) => item.source === "vision-suggested").length;
 
   return (
     <div className="photo-evidence-editor">
       <div className="photo-evidence-intro">
         <div>
-          <strong>Photo evidence</strong>
-          <span>Add a short caption and tag what the photo visibly supports. Gemini suggestions send photos to your configured Gemini API and stay out of scoring until accepted or edited.</span>
+          <strong>Photo evidence analysis</strong>
+          <span>Photos become report evidence when a rep confirms tags. Accepted tags directly update visible-condition risk, leak risk, urgency, and confidence.</span>
         </div>
         <button className="button secondary compact-button" type="button" onClick={onSuggestWithGemini} disabled={isSuggesting}>
           {isSuggesting ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
           {isSuggesting ? "Suggesting..." : "Suggest tags with Gemini"}
         </button>
+      </div>
+      <div className="photo-analysis-strip" aria-label="Photo analysis summary">
+        <PhotoAnalysisMetric label="Photos in report" value={String(photos.length)} />
+        <PhotoAnalysisMetric label="Confirmed tags" value={String(confirmedTags)} />
+        <PhotoAnalysisMetric label="Risk signals used" value={String(riskSignals)} />
+        <PhotoAnalysisMetric label="AI drafts pending" value={String(suggestedCount)} />
       </div>
       {photos.map((photo) => {
         const item = evidenceByPhotoId.get(photo.id) ?? createPhotoEvidence(photo);
@@ -1666,33 +1729,52 @@ function PhotoEvidenceEditor({
   );
 }
 
-function PhotoEvidenceReport({ evidence }: { evidence: PhotoEvidence[] }) {
+function PhotoAnalysisMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function PhotoEvidenceReport({ evidence, analysis }: { evidence: PhotoEvidence[]; analysis: PhotoEvidenceAnalysis[] }) {
   if (evidence.length === 0) return null;
+
+  const analysisByPhotoId = new Map(analysis.map((item) => [item.photoId, item]));
 
   return (
     <section className="photo-evidence-report">
       <div className="report-section-heading">
-        <p className="eyebrow">Photo Evidence</p>
-        <h3>Rep-confirmed photo notes</h3>
-        <span>These observations are based on uploaded photos and rep input, not an automated roof inspection.</span>
+        <p className="eyebrow">Photo Evidence Analysis</p>
+        <h3>What the uploaded photos changed</h3>
+        <span>Risk levels come from rep-confirmed tags. Gemini can draft tags, but unaccepted suggestions stay out of scoring and homeowner reports.</span>
       </div>
       <div className="photo-evidence-grid">
-        {evidence.map((item) => (
-          <article className="photo-evidence-report-card" key={item.photoId}>
-            <PhotoEvidenceImage evidence={item} />
-            <div>
-              <strong>{item.caption || "Roof photo evidence"}</strong>
-              <span className="photo-file-name" title={item.fileName}>{item.fileName}</span>
-              <div className="report-tag-list">
-                {item.observations.length > 0 ? (
-                  item.observations.map((flag) => <span key={flag}>{photoTagLabels[flag]}</span>)
-                ) : (
-                  <span>No specific observation tagged</span>
-                )}
+        {evidence.map((item) => {
+          const photoAnalysis = analysisByPhotoId.get(item.photoId);
+          return (
+            <article className="photo-evidence-report-card" key={item.photoId}>
+              <PhotoEvidenceImage evidence={item} />
+              <div>
+                <div className="photo-report-title">
+                  <strong>{item.caption || "Roof photo evidence"}</strong>
+                  {photoAnalysis ? <span className={`risk-chip ${photoAnalysis.riskLevel}`}>{photoRiskLabels[photoAnalysis.riskLevel]}</span> : null}
+                </div>
+                <span className="photo-file-name" title={item.fileName}>{item.fileName}</span>
+                <p className="photo-impact">{photoAnalysis?.summary ?? "Photo included as job context."}</p>
+                <p className="photo-impact muted-impact">{photoAnalysis?.reportImpact ?? "No scoring impact recorded."}</p>
+                <div className="report-tag-list">
+                  {item.observations.length > 0 ? (
+                    item.observations.map((flag) => <span key={flag}>{photoTagLabels[flag]}</span>)
+                  ) : (
+                    <span>No specific observation tagged</span>
+                  )}
+                </div>
               </div>
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
     </section>
   );
@@ -1904,7 +1986,8 @@ function ReportSection({
   onCopyLink,
   onExportCrm,
   isExportingCrm,
-  shareLabel
+  shareLabel,
+  hosted
 }: {
   savedReport: SavedReadinessReport;
   onCopy: () => void;
@@ -1912,6 +1995,7 @@ function ReportSection({
   onExportCrm: () => void;
   isExportingCrm: boolean;
   shareLabel: string;
+  hosted: boolean;
 }) {
   const { report, details, company } = savedReport;
   const theme = statusTheme[report.recommendation.status];
@@ -1980,6 +2064,8 @@ function ReportSection({
 
         <ScoreBoard scores={report.scores} leadQualityScore={report.leadQualityScore} />
 
+        <AnalysisTraceReport report={report} />
+
         <SolarOpportunityReport estimate={report.solarOpportunity} />
 
         <div className="report-grid">
@@ -1989,7 +2075,9 @@ function ReportSection({
           <ReportBlock title="Questions to ask homeowner" items={report.questionsToAsk} />
         </div>
 
-        <PhotoEvidenceReport evidence={report.photoEvidence ?? []} />
+        <PhotoEvidenceReport evidence={report.photoEvidence ?? []} analysis={report.photoAnalysis ?? []} />
+
+        <AuditTrailReport events={savedReport.auditTrail ?? []} hosted={hosted} />
 
         <section className="next-action">
           <div>
@@ -1998,14 +2086,70 @@ function ReportSection({
           </div>
           <div className="placeholder-stack" aria-label="Product readiness status">
             <span>Branding active</span>
-            <span>Local history active</span>
-            <span>Hosted share links next</span>
+            <span>{hosted ? "Hosted history active" : "Demo/local history active"}</span>
+            <span>{hosted ? "Expiring share links active" : "Hosted sharing after sign-in"}</span>
           </div>
         </section>
 
         <p className="disclaimer">{report.disclaimer}</p>
         {company.licenseNote ? <p className="company-note">{company.licenseNote}</p> : null}
       </article>
+    </section>
+  );
+}
+
+function AnalysisTraceReport({ report }: { report: ReadinessReport }) {
+  if (!report.analysisTrace?.length) return null;
+
+  return (
+    <section className="trace-card">
+      <div className="report-section-heading">
+        <p className="eyebrow">Why this answer</p>
+        <h3>Decision trace</h3>
+        <span>Each report shows which inputs, APIs, and rules shaped the recommendation.</span>
+      </div>
+      <div className="trace-grid">
+        {report.analysisTrace.map((item) => (
+          <article className="trace-item" key={`${item.label}-${item.source}`}>
+            <span>{item.source}</span>
+            <strong>{item.label}</strong>
+            <p>{item.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AuditTrailReport({ events, hosted }: { events: ReportAuditEvent[]; hosted: boolean }) {
+  const visibleEvents = events.length
+    ? events
+    : [
+        {
+          id: "audit-placeholder",
+          timestamp: new Date().toISOString(),
+          actor: "Roof Signal",
+          action: "Audit trail unavailable for older report",
+          detail: "Generate the report again to attach source, scoring, storage, and export audit events."
+        }
+      ];
+
+  return (
+    <section className="audit-card">
+      <div className="report-section-heading">
+        <p className="eyebrow">Audit Trail</p>
+        <h3>Report provenance and controls</h3>
+        <span>{hosted ? "Hosted reports keep this audit trail in the company workspace." : "Demo/local reports keep this audit trail in the saved report payload."}</span>
+      </div>
+      <div className="audit-list">
+        {visibleEvents.slice(0, 6).map((event) => (
+          <div className="audit-row" key={event.id}>
+            <span>{formatDate(event.timestamp)}</span>
+            <strong>{event.action}</strong>
+            <p>{event.detail}</p>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -2090,6 +2234,15 @@ function SolarOpportunityReport({ estimate }: { estimate?: SolarOpportunityEstim
             </li>
           </ul>
         </div>
+      </div>
+
+      <div className="solar-explain">
+        <strong>Why this estimate looks this way</strong>
+        <p>
+          {estimate.source === "nrel-pvwatts"
+            ? "Roof Signal sent the matched address coordinates, assumed system size, roof direction, pitch, and standard losses to NREL PVWatts. PVWatts returned the monthly and annual production estimate; roof area, shade, setbacks, and final layout still need field confirmation."
+            : "Roof Signal used a local fallback model because a signed-in PVWatts result was not available for this report. The estimate applies the rep-entered usable area, panel wattage, roof direction, pitch, and shade assumptions."}
+        </p>
       </div>
 
       {estimate.monthlyProductionKwh.length > 0 ? (
@@ -2354,9 +2507,11 @@ function buildSavedReport(
   report: ReadinessReport,
   details: PropertyDetails,
   photos: UploadedPhoto[],
-  company: CompanyProfile
+  company: CompanyProfile,
+  options: { storageMode?: "demo" | "local" | "hosted" } = {}
 ): SavedReadinessReport {
   const createdAt = report.generatedAt;
+  const storageMode = options.storageMode ?? "local";
 
   return {
     id: createId(),
@@ -2366,8 +2521,66 @@ function buildSavedReport(
     report,
     company,
     photoCount: photos.length,
-    photoNames: photos.map((photo) => photo.fileName)
+    photoNames: photos.map((photo) => photo.fileName),
+    auditTrail: buildReportAuditTrail(report, details, company, storageMode)
   };
+}
+
+function buildReportAuditTrail(
+  report: ReadinessReport,
+  details: PropertyDetails,
+  company: CompanyProfile,
+  storageMode: "demo" | "local" | "hosted"
+): ReportAuditEvent[] {
+  const actor = company.repName || company.email || "Roof Signal user";
+  const generatedAt = report.generatedAt;
+  const taggedPhotoAnalysisCount = report.photoAnalysis.filter((item) => item.observations.length > 0).length;
+  const storageDetail =
+    storageMode === "hosted"
+      ? "Saved to AWS with company-scoped DynamoDB records, private S3 photo storage, 90-day retention, and 30-day share link policy."
+      : storageMode === "demo"
+      ? "Generated from the guided demo dataset; report is not a professional inspection or production solar design."
+      : "Saved to browser local storage for demo use; sign in to use hosted company-separated storage.";
+
+  return [
+    {
+      id: `${report.generatedAt}-generated`,
+      timestamp: generatedAt,
+      actor,
+      action: "Report generated",
+      detail: `${details.homeownerName || "Homeowner"} report generated with ${report.assessmentMode} assessment mode.`
+    },
+    {
+      id: `${report.generatedAt}-photo-evidence`,
+      timestamp: generatedAt,
+      actor,
+      action: "Photo evidence applied",
+      detail: `${report.photoEvidence.length} uploaded photo${report.photoEvidence.length === 1 ? "" : "s"} and ${taggedPhotoAnalysisCount} tagged photo analysis item${taggedPhotoAnalysisCount === 1 ? "" : "s"} were included.`
+    },
+    {
+      id: `${report.generatedAt}-recommendation`,
+      timestamp: generatedAt,
+      actor: "Roof Signal scoring",
+      action: "Recommendation calculated",
+      detail: `${report.recommendation.label} selected from total roof risk ${report.scores.totalRisk}/100 and solar readiness ${report.scores.solarReadiness}/100.`
+    },
+    {
+      id: `${report.generatedAt}-solar-source`,
+      timestamp: generatedAt,
+      actor: "Roof Signal solar estimate",
+      action: "Solar source recorded",
+      detail: report.solarOpportunity
+        ? `${report.solarOpportunity.source === "nrel-pvwatts" ? "NREL PVWatts" : "Local fallback"} estimate saved with ${report.solarOpportunity.confidence} confidence.`
+        : "No solar production estimate was attached."
+    },
+    {
+      id: `${report.generatedAt}-storage`,
+      timestamp: generatedAt,
+      actor: "Roof Signal workspace",
+      action: "Storage policy attached",
+      detail: storageDetail
+    }
+  ];
 }
 
 function buildClipboardSummary(report: ReadinessReport, details: PropertyDetails, company: CompanyProfile): string {

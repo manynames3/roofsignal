@@ -63,6 +63,20 @@ export interface PhotoEvidence {
   source: PhotoEvidenceSource;
 }
 
+export type PhotoRiskLevel = "clear" | "monitor" | "repair-review" | "inspection-review";
+
+export interface PhotoEvidenceAnalysis {
+  photoId: string;
+  fileName: string;
+  caption: string;
+  observations: VisibleConditionFlag[];
+  source: PhotoEvidenceSource;
+  riskLevel: PhotoRiskLevel;
+  riskScore: number;
+  summary: string;
+  reportImpact: string;
+}
+
 export interface PropertyDetails {
   homeownerName: string;
   propertyAddress: string;
@@ -152,10 +166,18 @@ export interface ReadinessReport {
   solarReadinessFactors: string[];
   questionsToAsk: string[];
   photoEvidence: PhotoEvidence[];
+  photoAnalysis: PhotoEvidenceAnalysis[];
+  analysisTrace: AnalysisTraceItem[];
   solarOpportunity?: SolarOpportunityEstimate;
   suggestedTalkTrack: string;
   disclaimer: string;
   leadQualityScore: number;
+}
+
+export interface AnalysisTraceItem {
+  label: string;
+  source: string;
+  detail: string;
 }
 
 export interface CompanyProfile {
@@ -164,6 +186,14 @@ export interface CompanyProfile {
   phone: string;
   email: string;
   licenseNote: string;
+}
+
+export interface ReportAuditEvent {
+  id: string;
+  timestamp: string;
+  actor: string;
+  action: string;
+  detail: string;
 }
 
 export interface SavedReadinessReport {
@@ -175,4 +205,5 @@ export interface SavedReadinessReport {
   company: CompanyProfile;
   photoCount: number;
   photoNames: string[];
+  auditTrail?: ReportAuditEvent[];
 }

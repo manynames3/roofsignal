@@ -1,7 +1,9 @@
 import type {
+  AnalysisTraceItem,
   ConfidenceLevel,
   DesiredOutcome,
   PhotoEvidence,
+  PhotoEvidenceAnalysis,
   PropertyDetails,
   ReadinessReport,
   RecommendationStatus,
@@ -254,6 +256,8 @@ export function analyzeRoofReadiness(input: RoofAssessmentInput): ReadinessRepor
     solarReadinessFactors: buildSolarReadinessFactors(input, scores),
     questionsToAsk: buildQuestions(input, recommendation.status),
     photoEvidence: buildPhotoEvidence(input),
+    photoAnalysis: buildPhotoAnalysis(input),
+    analysisTrace: buildAnalysisTrace(input, scores, recommendation),
     solarOpportunity: input.solarOpportunity,
     suggestedTalkTrack: getTalkTrack(recommendation.status),
     disclaimer:
@@ -271,11 +275,84 @@ function buildPhotoEvidence(input: RoofAssessmentInput): PhotoEvidence[] {
       photoId: photo.id,
       fileName: photo.fileName,
       previewUrl: evidence?.previewUrl ?? photo.previewUrl,
+      storageKey: evidence?.storageKey,
       caption: evidence?.caption.trim() || getDefaultPhotoCaption(photo.fileName),
       observations: [...(evidence?.observations ?? [])],
       source: evidence?.source ?? "rep-entered"
     };
   });
+}
+
+function buildPhotoAnalysis(input: RoofAssessmentInput): PhotoEvidenceAnalysis[] {
+  const evidenceByPhotoId = new Map(buildPhotoEvidence(input).map((item) => [item.photoId, item]));
+
+  return input.photos.map((photo) => {
+    const evidence = evidenceByPhotoId.get(photo.id);
+    const observations = evidence?.observations ?? [];
+    const riskScore = scorePhotoEvidence(observations);
+    const riskLevel = getPhotoRiskLevel(observations, riskScore);
+
+    return {
+      photoId: photo.id,
+      fileName: photo.fileName,
+      caption: evidence?.caption ?? getDefaultPhotoCaption(photo.fileName),
+      observations,
+      source: evidence?.source ?? "rep-entered",
+      riskLevel,
+      riskScore,
+      summary: getPhotoAnalysisSummary(observations, riskLevel),
+      reportImpact: getPhotoReportImpact(observations, riskLevel)
+    };
+  });
+}
+
+function scorePhotoEvidence(observations: VisibleConditionFlag[]): number {
+  if (observations.length === 0) return 20;
+  if (observations.includes("no-obvious-damage") && observations.length === 1) return 5;
+
+  const score = observations.reduce((sum, flag) => sum + Math.max(0, conditionWeights[flag]), 8);
+  return clamp(score);
+}
+
+function getPhotoRiskLevel(observations: VisibleConditionFlag[], riskScore: number): PhotoEvidenceAnalysis["riskLevel"] {
+  if (observations.includes("sagging-or-soft-decking") || observations.includes("interior-staining") || observations.includes("limited-or-unclear-photos")) {
+    return "inspection-review";
+  }
+  if (riskScore >= 38 || observations.includes("missing-or-damaged-shingles") || observations.includes("curling-or-lifted-shingles")) {
+    return "repair-review";
+  }
+  if (riskScore > 8) return "monitor";
+  return "clear";
+}
+
+function getPhotoAnalysisSummary(observations: VisibleConditionFlag[], riskLevel: PhotoEvidenceAnalysis["riskLevel"]): string {
+  if (observations.length === 0) {
+    return "Photo is included as job context, but no visible condition tag has been confirmed.";
+  }
+  if (observations.includes("no-obvious-damage") && observations.length === 1) {
+    return "No obvious roof damage was tagged in this photo.";
+  }
+  if (riskLevel === "inspection-review") {
+    return "Photo contains a signal that should be confirmed by an in-person roof review.";
+  }
+  if (riskLevel === "repair-review") {
+    return "Photo contains visible wear or damage that supports a roof tune-up or repair discussion.";
+  }
+  return "Photo contains a minor or contextual observation that should be monitored during the appointment.";
+}
+
+function getPhotoReportImpact(observations: VisibleConditionFlag[], riskLevel: PhotoEvidenceAnalysis["riskLevel"]): string {
+  if (observations.length === 0) return "Did not change roof risk scoring until a rep confirms tags.";
+  if (observations.includes("no-obvious-damage") && observations.length === 1) {
+    return "Supports lower visible-condition risk when combined with newer roof age and no leak history.";
+  }
+  if (riskLevel === "inspection-review") {
+    return "Increases leak, urgency, or inspection-first confidence because the tag is high risk or unclear.";
+  }
+  if (riskLevel === "repair-review") {
+    return "Raises visible-condition risk and can move the sales path toward tune-up or replacement-first.";
+  }
+  return "Adds context to the report without creating a severe roof-risk recommendation by itself.";
 }
 
 function getConfirmedPhotoEvidence(input: RoofAssessmentInput): PhotoEvidence[] {
@@ -327,6 +404,59 @@ function buildKeyObservations(input: RoofAssessmentInput, scores: RoofRiskScores
   }
 
   return observations;
+}
+
+function buildAnalysisTrace(
+  input: RoofAssessmentInput,
+  scores: RoofRiskScores,
+  recommendation: RoofRecommendation
+): AnalysisTraceItem[] {
+  const confirmedEvidence = getConfirmedPhotoEvidence(input);
+  const photoRiskTags = Array.from(new Set(confirmedEvidence.flatMap((item) => item.observations))).filter(
+    (flag) => flag !== "no-obvious-damage"
+  );
+  const solar = input.solarOpportunity;
+  const trace: AnalysisTraceItem[] = [
+    {
+      label: "Photo evidence used",
+      source: input.visionObservationUsed ? "Rep-confirmed vision suggestion" : "Rep-confirmed tags",
+      detail:
+        confirmedEvidence.length > 0
+          ? `${confirmedEvidence.length} photo evidence item${confirmedEvidence.length === 1 ? "" : "s"} contributed ${photoRiskTags.length} visible risk tag${photoRiskTags.length === 1 ? "" : "s"} to condition scoring.`
+          : "Uploaded photos are shown in the report, but no confirmed photo tags changed scoring."
+    },
+    {
+      label: "Roof score calculation",
+      source: "Rule-based scoring",
+      detail: `Total roof risk ${scores.totalRisk}/100 combines roof age (${scores.roofAgeRisk}), visible condition (${scores.visibleConditionRisk}), and leak risk (${scores.leakRisk}).`
+    },
+    {
+      label: "Recommendation trigger",
+      source: "Transparent decision rules",
+      detail: `${recommendation.label} was selected from total risk ${scores.totalRisk}/100, urgency ${scores.urgency}/100, solar readiness ${scores.solarReadiness}/100, and data completeness ${scores.dataCompleteness}%.`
+    }
+  ];
+
+  if (solar) {
+    trace.push({
+      label: "Solar estimate source",
+      source: solar.source === "nrel-pvwatts" ? "Server-side NREL PVWatts" : "Local fallback model",
+      detail:
+        solar.source === "nrel-pvwatts"
+          ? `PVWatts used the matched address, ${solar.systemCapacityKw ?? "pending"} kW DC system size, ${solar.roofPitchDegrees ?? 20} degree tilt, and ${solar.roofOrientation} roof direction. Roof area and shade are still rep-entered assumptions.`
+          : "The estimate used local production assumptions because signed-in PVWatts data, geocoding, or required roof inputs were not available."
+    });
+  }
+
+  trace.push({
+    label: "AI boundary",
+    source: input.visionObservationUsed ? "Vision-assisted draft evidence" : "No autonomous AI decision",
+    detail: input.visionObservationUsed
+      ? "Gemini suggested visible photo tags, but a rep had to accept them before they affected scoring or appeared in the report."
+      : "The report is rule-based from provided inputs. Gemini suggestions, when available, do not affect scoring until accepted."
+  });
+
+  return trace;
 }
 
 function buildRoofRiskFactors(input: RoofAssessmentInput, scores: RoofRiskScores): string[] {

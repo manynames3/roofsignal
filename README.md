@@ -17,9 +17,12 @@ This repository now supports both a client-side demo mode and an AWS hosted pilo
 - Preliminary solar score, estimated DC watts, panel count, annual production, and monthly production chart.
 - Transparent rule-based scoring for roof age risk, visible condition risk, leak risk, urgency, solar readiness, data completeness, and lead quality.
 - Homeowner-friendly readiness report with transparent scores, photo evidence, homeowner questions, next action, and disclaimer.
+- Photo evidence analysis that shows per-photo risk level, confirmed tags, and how accepted observations affected the report.
+- Explainability trace showing which inputs, rules, Gemini boundaries, and NREL/PVWatts or local solar sources shaped the answer.
 - Local report history, company branding fields, print-friendly output, copyable summaries, and demo scenarios.
 - Optional server-side Gemini photo evidence suggestions. Suggested tags are not used for scoring or reports until the rep accepts or edits them.
 - AWS hosted backend: Cognito invite-only sign-in, DynamoDB saved reports, S3 private photo storage, hosted share links, server-side NREL/Gemini proxying, request-access intake, and CSV export.
+- Visible hosted controls for team role posture, report/photo retention, share-link retention, and per-report audit events.
 
 ## What is intentionally not built yet
 
