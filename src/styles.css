@@ -571,6 +571,13 @@ main {
   text-decoration: none;
 }
 
+.compact-button {
+  min-height: 36px;
+  padding: 8px 11px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
 .button.primary {
   color: #ffffff;
   background: #0e7a4f;
@@ -1006,6 +1013,10 @@ main {
 }
 
 .photo-evidence-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   padding: 12px 14px;
   border: 1px solid #dce4d8;
   border-radius: 8px;
@@ -1031,6 +1042,12 @@ main {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
+}
+
+.photo-evidence-card.vision-suggested {
+  border-color: rgba(45, 95, 168, 0.32);
+  background: #f7faff;
+  box-shadow: inset 0 0 0 1px rgba(45, 95, 168, 0.08);
 }
 
 .photo-card-image {
@@ -1110,6 +1127,42 @@ main {
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.suggestion-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+  border: 1px solid #d6e2f4;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #2b527f;
+  background: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.suggestion-actions span {
+  flex: 1 1 auto;
+}
+
+.suggestion-actions button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  border: 1px solid #c5d5ec;
+  border-radius: 7px;
+  padding: 5px 9px;
+  color: #1f4d86;
+  background: #f7faff;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.suggestion-actions button:hover {
+  border-color: #96b2d8;
+  background: #edf5ff;
 }
 
 .field-grid {
@@ -2016,6 +2069,16 @@ main {
 
   .report-brand > div:last-child {
     text-align: left;
+  }
+
+  .photo-evidence-intro,
+  .suggestion-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .suggestion-actions button {
+    width: 100%;
   }
 
   .button {

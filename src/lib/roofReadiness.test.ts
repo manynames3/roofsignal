@@ -118,6 +118,31 @@ describe("roof readiness scoring", () => {
     expect(report.keyObservations).toContain("1 photo evidence item tagged with visible observations.");
   });
 
+  it("does not include unconfirmed vision-suggested photo evidence in the report", () => {
+    const report = analyzeRoofReadiness(
+      input({
+        photoEvidence: [
+          {
+            photoId: "photo-1",
+            fileName: "roof.jpg",
+            previewUrl: "blob:roof",
+            caption: "Gemini suggested lifted shingles.",
+            observations: ["curling-or-lifted-shingles"],
+            source: "vision-suggested"
+          }
+        ]
+      })
+    );
+
+    expect(report.assessmentMode).toBe("rule-based");
+    expect(report.photoEvidence[0]).toMatchObject({
+      caption: "Roof photo: roof",
+      observations: [],
+      source: "rep-entered"
+    });
+    expect(report.keyObservations).not.toContain("1 photo evidence item tagged with visible observations.");
+  });
+
   it("creates default photo evidence when captions are not provided", () => {
     const report = analyzeRoofReadiness(input());
 

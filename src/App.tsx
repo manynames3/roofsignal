@@ -31,6 +31,7 @@ import {
   Zap
 } from "lucide-react";
 import { demoScenarios, type DemoScenario } from "./demoData";
+import { requestGeminiPhotoEvidenceSuggestions } from "./lib/geminiPhotoEvidenceClient";
 import {
   analyzeRoofReadiness,
   conditionFlagLabels,
@@ -59,6 +60,7 @@ import {
   saveReport
 } from "./lib/storage";
 import { isVisionAnalysisConfigured } from "./lib/visionAnalysisProvider";
+import type { VisionPhotoEvidenceSuggestion } from "./lib/visionAnalysisProvider";
 import type {
   CompanyProfile,
   KnownStatus,
@@ -417,12 +419,13 @@ function ReadinessApp() {
   const [notice, setNotice] = useState<Notice>(null);
   const [limitsAccepted, setLimitsAccepted] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSuggestingPhotoEvidence, setIsSuggestingPhotoEvidence] = useState(false);
 
   const visionConfigured = isVisionAnalysisConfigured();
   const pvWattsConfigured = isPvWattsConfigured();
   const readinessChecks = useMemo(
-    () => getReadinessChecks(photos, details, solarAssumptions),
-    [photos, details, solarAssumptions]
+    () => getReadinessChecks(photos, details, solarAssumptions, photoEvidence),
+    [photos, details, solarAssumptions, photoEvidence]
   );
   const dashboardReports = useMemo(
     () => (isDemoMode && activeReport ? [activeReport, ...savedReports] : savedReports),
@@ -572,6 +575,78 @@ function ReadinessApp() {
     clearReportUrl();
   }
 
+  function acceptPhotoEvidenceSuggestion(photoId: string) {
+    const suggestion = photoEvidence.find((item) => item.photoId === photoId);
+
+    setPhotoEvidence((current) =>
+      current.map((item) => (item.photoId === photoId ? { ...item, source: "rep-entered" } : item))
+    );
+
+    suggestion?.observations
+      .filter((flag) => flag !== "no-obvious-damage")
+      .forEach((flag) => setDetails((current) => addConditionFlagToDetails(current, flag)));
+
+    setActiveReport(null);
+    clearReportUrl();
+  }
+
+  function rejectPhotoEvidenceSuggestion(photoId: string) {
+    setPhotoEvidence((current) =>
+      current.map((item) =>
+        item.photoId === photoId
+          ? {
+              ...item,
+              observations: [],
+              source: "rep-entered"
+            }
+          : item
+      )
+    );
+    setActiveReport(null);
+    clearReportUrl();
+  }
+
+  async function suggestPhotoEvidenceWithGemini() {
+    if (photos.length === 0) {
+      setNotice({ type: "warning", message: "Upload roof photos before requesting Gemini suggestions." });
+      return;
+    }
+
+    setIsSuggestingPhotoEvidence(true);
+    setActiveReport(null);
+    clearReportUrl();
+
+    try {
+      const result = await requestGeminiPhotoEvidenceSuggestions(photos);
+
+      if (!result.configured) {
+        setNotice({
+          type: "warning",
+          message: result.error ?? "Gemini is not configured yet. Add GEMINI_API_KEY on the server."
+        });
+        return;
+      }
+
+      if (result.suggestions.length === 0) {
+        setNotice({ type: "warning", message: "Gemini did not return usable photo evidence suggestions." });
+        return;
+      }
+
+      setPhotoEvidence((current) => mergeVisionSuggestions(photos, current, result.suggestions));
+      setNotice({
+        type: "success",
+        message: `Gemini suggested tags for ${result.suggestions.length} photo${result.suggestions.length === 1 ? "" : "s"}. Accept or edit before sharing.`
+      });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Gemini photo evidence suggestions failed."
+      });
+    } finally {
+      setIsSuggestingPhotoEvidence(false);
+    }
+  }
+
   function handleConditionToggle(flag: VisibleConditionFlag) {
     setDetails((current) => {
       const hasFlag = current.visibleConditionFlags.includes(flag);
@@ -703,12 +778,13 @@ function ReadinessApp() {
 
     try {
       const evidenceForPhotos = syncPhotoEvidenceForPhotos(photos, photoEvidence);
-      const detailsForReport = applyPhotoEvidenceToDetails(details, evidenceForPhotos);
+      const reportableEvidence = getReportablePhotoEvidence(evidenceForPhotos);
+      const detailsForReport = applyPhotoEvidenceToDetails(details, reportableEvidence);
       const solarOpportunity = await analyzeSolarOpportunity(detailsForReport, solarAssumptions);
       const report = analyzeRoofReadiness({
         photos,
         details: detailsForReport,
-        photoEvidence: evidenceForPhotos,
+        photoEvidence: reportableEvidence,
         solarOpportunity,
         visionConfigured,
         visionObservationUsed: false
@@ -898,9 +974,13 @@ function ReadinessApp() {
             <PhotoEvidenceEditor
               photos={photos}
               evidence={photoEvidence}
+              isSuggesting={isSuggestingPhotoEvidence}
               onRemove={removePhoto}
               onCaptionChange={updatePhotoEvidenceCaption}
               onObservationToggle={togglePhotoEvidenceObservation}
+              onSuggestWithGemini={suggestPhotoEvidenceWithGemini}
+              onAcceptSuggestion={acceptPhotoEvidenceSuggestion}
+              onRejectSuggestion={rejectPhotoEvidenceSuggestion}
             />
           </section>
 
@@ -974,7 +1054,7 @@ function ReadinessApp() {
             <div className="condition-section">
               <div>
                 <h3>Visible condition inputs</h3>
-                <p>Use what can be seen in photos or what the homeowner reported. The MVP does not inspect photos automatically.</p>
+                <p>Use what can be seen in photos or what the homeowner reported. Gemini can suggest tags if configured, but scoring uses only rep-entered or rep-accepted inputs.</p>
               </div>
               <div className="chip-grid">
                 {conditionOptions.map((flag) => (
@@ -1018,8 +1098,8 @@ function ReadinessApp() {
               <div className="mode-note">
                 <Sparkles size={18} />
                 {visionConfigured
-                  ? "Vision adapter flag is enabled, but no provider is connected in this client-only MVP."
-                  : "Rule-based from provided inputs. AI vision requires a future server-side provider."}
+                  ? "Vision adapter flag is enabled. Confirm any suggested photo tags before generating."
+                  : "Rule-based report. Gemini photo suggestions are optional and must be confirmed before scoring."}
               </div>
               <button className="button primary" type="submit" disabled={isAnalyzing}>
                 {isAnalyzing ? <Loader2 size={18} className="spin" /> : <Save size={18} />}
@@ -1233,15 +1313,23 @@ function PhotoDropzone({ onFiles }: { onFiles: (files: FileList | File[]) => voi
 function PhotoEvidenceEditor({
   photos,
   evidence,
+  isSuggesting,
   onRemove,
   onCaptionChange,
-  onObservationToggle
+  onObservationToggle,
+  onSuggestWithGemini,
+  onAcceptSuggestion,
+  onRejectSuggestion
 }: {
   photos: UploadedPhoto[];
   evidence: PhotoEvidence[];
+  isSuggesting: boolean;
   onRemove: (photoId: string) => void;
   onCaptionChange: (photoId: string, caption: string) => void;
   onObservationToggle: (photoId: string, flag: VisibleConditionFlag) => void;
+  onSuggestWithGemini: () => void;
+  onAcceptSuggestion: (photoId: string) => void;
+  onRejectSuggestion: (photoId: string) => void;
 }) {
   if (photos.length === 0) {
     return (
@@ -1257,13 +1345,21 @@ function PhotoEvidenceEditor({
   return (
     <div className="photo-evidence-editor">
       <div className="photo-evidence-intro">
-        <strong>Photo evidence</strong>
-        <span>Add a short caption and tag what the photo visibly supports. These notes appear in the report.</span>
+        <div>
+          <strong>Photo evidence</strong>
+          <span>Add a short caption and tag what the photo visibly supports. Gemini suggestions send photos to your configured Gemini API and stay out of scoring until accepted or edited.</span>
+        </div>
+        <button className="button secondary compact-button" type="button" onClick={onSuggestWithGemini} disabled={isSuggesting}>
+          {isSuggesting ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+          {isSuggesting ? "Suggesting..." : "Suggest tags with Gemini"}
+        </button>
       </div>
       {photos.map((photo) => {
         const item = evidenceByPhotoId.get(photo.id) ?? createPhotoEvidence(photo);
+        const isVisionSuggested = item.source === "vision-suggested";
+
         return (
-          <article className="photo-evidence-card" key={photo.id}>
+          <article className={`photo-evidence-card ${isVisionSuggested ? "vision-suggested" : ""}`} key={photo.id}>
             <div className="photo-card-image">
               <img src={photo.previewUrl} alt={`Uploaded roof photo ${photo.fileName}`} />
               <button type="button" aria-label={`Remove ${photo.fileName}`} onClick={() => onRemove(photo.id)}>
@@ -1290,6 +1386,17 @@ function PhotoEvidenceEditor({
                 </label>
               ))}
             </div>
+            {isVisionSuggested ? (
+              <div className="suggestion-actions">
+                <span>Gemini suggestion. Confirm before it affects scoring.</span>
+                <button type="button" onClick={() => onAcceptSuggestion(photo.id)}>
+                  Accept
+                </button>
+                <button type="button" onClick={() => onRejectSuggestion(photo.id)}>
+                  Reject
+                </button>
+              </div>
+            ) : null}
             <p className="photo-file-name" title={photo.fileName}>{photo.fileName}</p>
           </article>
         );
@@ -1647,7 +1754,7 @@ function ReportPlaceholder({ visionConfigured }: { visionConfigured: boolean }) 
             copyable summary, local history, and the required pre-appointment disclaimer.
           </p>
           <span className="pill muted">
-            {visionConfigured ? "Vision flag enabled - provider still required" : "Rule-based MVP - server-side AI ready later"}
+            {visionConfigured ? "Vision flag enabled - confirmation required" : "Rule-based report - Gemini suggestions optional"}
           </span>
         </div>
       </div>
@@ -1785,9 +1892,11 @@ function ReportBlock({ title, items }: { title: string; items: string[] }) {
 function getReadinessChecks(
   photos: UploadedPhoto[],
   details: PropertyDetails,
-  solarAssumptions: SolarOpportunityAssumptions
+  solarAssumptions: SolarOpportunityAssumptions,
+  photoEvidence: PhotoEvidence[]
 ): string[] {
   const checks: string[] = [];
+  const unconfirmedSuggestions = photoEvidence.filter((item) => item.source === "vision-suggested").length;
 
   if (photos.length === 0) checks.push("Add roof photos or expect low confidence.");
   if (!details.homeownerName.trim()) checks.push("Add homeowner name for a shareable report.");
@@ -1800,6 +1909,9 @@ function getReadinessChecks(
   if (!solarAssumptions.usableRoofAreaSqft) checks.push("Add usable roof area for solar wattage and production estimate.");
   if (solarAssumptions.roofOrientation === "unknown") checks.push("Confirm primary solar roof direction.");
   if (solarAssumptions.shadeLevel === "unknown") checks.push("Confirm shade level for solar score.");
+  if (unconfirmedSuggestions > 0) {
+    checks.push(`Accept, edit, or reject ${unconfirmedSuggestions} Gemini photo suggestion${unconfirmedSuggestions === 1 ? "" : "s"} before sharing.`);
+  }
 
   return checks;
 }
@@ -1837,6 +1949,39 @@ function syncPhotoEvidenceForPhotos(photos: UploadedPhoto[], evidence: PhotoEvid
       source: existing?.source ?? "rep-entered"
     };
   });
+}
+
+function mergeVisionSuggestions(
+  photos: UploadedPhoto[],
+  currentEvidence: PhotoEvidence[],
+  suggestions: VisionPhotoEvidenceSuggestion[]
+): PhotoEvidence[] {
+  const evidenceByPhotoId = new Map(currentEvidence.map((item) => [item.photoId, item]));
+  const suggestionsByPhotoId = new Map(suggestions.map((suggestion) => [suggestion.photoId, suggestion]));
+
+  return photos.map((photo) => {
+    const current = evidenceByPhotoId.get(photo.id) ?? createPhotoEvidence(photo);
+    const suggestion = suggestionsByPhotoId.get(photo.id);
+
+    if (!suggestion) return current;
+
+    const hasRepConfirmedInput =
+      current.source === "rep-entered" &&
+      (current.observations.length > 0 || current.caption.trim() !== getDefaultPhotoCaption(photo.fileName));
+
+    if (hasRepConfirmedInput) return current;
+
+    return {
+      ...current,
+      caption: suggestion.caption.trim() || current.caption,
+      observations: [...suggestion.observations],
+      source: "vision-suggested"
+    };
+  });
+}
+
+function getReportablePhotoEvidence(evidence: PhotoEvidence[]): PhotoEvidence[] {
+  return evidence.filter((item) => item.source !== "vision-suggested");
 }
 
 function getDefaultPhotoCaption(fileName: string): string {

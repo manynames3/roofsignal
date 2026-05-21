@@ -35,15 +35,16 @@ export async function getVisionObservation(
 }
 
 /*
-  Future integration point:
+  Future provider abstraction:
   - VITE_VISION_PROVIDER=openai | anthropic | gemini | custom
   - VITE_VISION_ENABLED=true
   - Implement VisionAnalysisProvider in a server-side route or edge function.
   - Convert VisionPhotoEvidenceSuggestion results into PhotoEvidence records with
     source: "vision-suggested", then require rep confirmation before scoring.
 
-  Keep API keys off the client in production. This MVP only exposes the interface
-  and environment placeholders so rule-based assessments never pretend to be AI.
+  Keep API keys off the client in production. The current Gemini endpoint follows
+  this pattern for photo evidence suggestions; this interface remains available
+  for future multi-provider support.
 */
 
 export function toVisionSuggestedPhotoEvidence(

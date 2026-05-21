@@ -263,7 +263,7 @@ export function analyzeRoofReadiness(input: RoofAssessmentInput): ReadinessRepor
 }
 
 function buildPhotoEvidence(input: RoofAssessmentInput): PhotoEvidence[] {
-  const evidenceByPhotoId = new Map(input.photoEvidence?.map((item) => [item.photoId, item]));
+  const evidenceByPhotoId = new Map(getConfirmedPhotoEvidence(input).map((item) => [item.photoId, item]));
 
   return input.photos.map((photo) => {
     const evidence = evidenceByPhotoId.get(photo.id);
@@ -276,6 +276,10 @@ function buildPhotoEvidence(input: RoofAssessmentInput): PhotoEvidence[] {
       source: evidence?.source ?? "rep-entered"
     };
   });
+}
+
+function getConfirmedPhotoEvidence(input: RoofAssessmentInput): PhotoEvidence[] {
+  return input.photoEvidence?.filter((item) => item.source !== "vision-suggested") ?? [];
 }
 
 function getDefaultPhotoCaption(fileName: string): string {
@@ -293,7 +297,7 @@ function buildKeyObservations(input: RoofAssessmentInput, scores: RoofRiskScores
 
   observations.push(`${input.photos.length} roof photo${input.photos.length === 1 ? "" : "s"} uploaded.`);
 
-  const taggedPhotoCount = input.photoEvidence?.filter((item) => item.observations.length > 0).length ?? 0;
+  const taggedPhotoCount = getConfirmedPhotoEvidence(input).filter((item) => item.observations.length > 0).length;
   if (taggedPhotoCount > 0) {
     observations.push(
       `${taggedPhotoCount} photo evidence item${taggedPhotoCount === 1 ? "" : "s"} tagged with visible observations.`

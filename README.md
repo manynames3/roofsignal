@@ -18,6 +18,7 @@ This repository is a client-side MVP. It is suitable for portfolio demos, prospe
 - Transparent rule-based scoring for roof age risk, visible condition risk, leak risk, urgency, solar readiness, data completeness, and lead quality.
 - Homeowner-friendly readiness report with transparent scores, photo evidence, homeowner questions, next action, and disclaimer.
 - Local report history, company branding fields, print-friendly output, copyable summaries, and demo scenarios.
+- Optional server-side Gemini photo evidence suggestions. Suggested tags are not used for scoring or reports until the rep accepts or edits them.
 
 ## What is intentionally not built yet
 
@@ -27,7 +28,7 @@ This repository is a client-side MVP. It is suitable for portfolio demos, prospe
 - Billing.
 - CRM integrations.
 - Automatic roof-plane measurement, usable surface area detection, shading analysis, or final solar design.
-- Real AI vision analysis. The current product does not inspect image pixels automatically.
+- Automatic licensed roof inspection or final condition determination from photos.
 
 ## Tech stack
 
@@ -78,7 +79,7 @@ This repo is connected to Cloudflare Pages for automatic deployments. Pushing to
 
 ## Environment variables
 
-Copy `.env.example` to `.env.local` if you are experimenting with future integrations. Do not put production AI provider keys in client-exposed `VITE_*` variables. Real vision analysis should run through a server-side API route or backend function.
+Copy `.env.example` to `.env.local` if you are experimenting with optional integrations. Do not put production AI provider keys in client-exposed `VITE_*` variables.
 
 Optional solar estimate integration:
 
@@ -87,11 +88,19 @@ Optional solar estimate integration:
 - Without an NREL key or matched address, the app falls back to a local assumption-based solar estimate.
 - Final roof area, shade, setbacks, panel layout, and production modeling still require a site survey and installer design tool.
 
+Optional Gemini photo evidence suggestions:
+
+- Add `GEMINI_API_KEY` to `.env.local` for local Vite development.
+- Add `GEMINI_API_KEY` as a Cloudflare Pages environment variable for production.
+- Optional: set `GEMINI_MODEL`; the default is `gemini-2.5-flash-lite`.
+- The browser sends selected roof photos to `/api/photo-evidence-suggestions`. The server-side function sends resized inline images to Gemini and returns suggested captions/tags.
+- Gemini suggestions are stored as `vision-suggested` until the rep accepts, edits, or rejects them. Unconfirmed suggestions do not affect scoring and do not appear in homeowner-facing reports.
+
 ## Product positioning
 
 Honest claim today:
 
-> Generate a rule-based roof/solar readiness report from rep-entered job details, uploaded roof photos, rep-confirmed photo evidence tags, and preliminary solar opportunity assumptions.
+> Generate a roof/solar readiness report from rep-entered job details, uploaded roof photos, rep-confirmed photo evidence tags, optional Gemini tag suggestions, and preliminary solar opportunity assumptions.
 
 Next production milestone:
 
@@ -99,12 +108,12 @@ Next production milestone:
 
 ## AI vision roadmap
 
-AI vision is intentionally future-facing, not active in this client-only MVP. The next implementation phase should:
+Gemini photo evidence suggestions are now connected through a server-side endpoint, but the product still treats AI output as assistive draft evidence. The next implementation phase should:
 
-1. Add a server-side vision endpoint or backend function so provider keys are never exposed in the browser.
-2. Connect the existing `VisionAnalysisProvider` adapter to OpenAI, Anthropic, Gemini, or a custom provider.
-3. Return suggested photo observations using the same `PhotoEvidence` model used by the current rep-confirmed workflow.
-4. Require the rep to accept, edit, or reject suggested tags before they affect scoring or appear in a homeowner-facing report.
+1. Add provider usage logging, error analytics, and per-report AI provenance.
+2. Let reps edit Gemini captions inline before accepting all suggestions.
+3. Add a second-pass reviewer prompt for low-confidence or conflicting photo evidence.
+4. Add cost controls, rate limits, and team-level enable/disable settings.
 5. Keep every report labeled as rule-based, vision-assisted, or manually confirmed so the app never implies a licensed inspection.
 
 ## Safety and trust language
