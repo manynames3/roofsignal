@@ -29,6 +29,19 @@ export type RecommendationStatus =
 
 export type ConfidenceLevel = "low" | "medium" | "high";
 
+export type RoofOrientation =
+  | "south"
+  | "south-east"
+  | "south-west"
+  | "east"
+  | "west"
+  | "north"
+  | "unknown";
+
+export type ShadeLevel = "low" | "moderate" | "heavy" | "unknown";
+
+export type SolarEstimateSource = "local-assumption" | "nrel-pvwatts";
+
 export interface UploadedPhoto {
   id: string;
   fileName: string;
@@ -62,10 +75,49 @@ export interface PropertyDetails {
   visibleConditionFlags: VisibleConditionFlag[];
 }
 
+export interface SolarOpportunityAssumptions {
+  usableRoofAreaSqft: number | null;
+  roofOrientation: RoofOrientation;
+  roofPitchDegrees: number | null;
+  panelWattage: number;
+  shadeLevel: ShadeLevel;
+}
+
+export interface SolarGeocodeResult {
+  provider: "us-census";
+  status: "matched" | "not-found" | "error";
+  matchedAddress?: string;
+  latitude?: number;
+  longitude?: number;
+  message?: string;
+}
+
+export interface SolarOpportunityEstimate {
+  source: SolarEstimateSource;
+  geocode: SolarGeocodeResult;
+  solarScore: number;
+  confidence: ConfidenceLevel;
+  confidenceRationale: string;
+  usableRoofAreaSqft: number | null;
+  panelCount: number | null;
+  systemCapacityKw: number | null;
+  estimatedDcWatts: number | null;
+  annualProductionKwh: number | null;
+  monthlyProductionKwh: number[];
+  roofOrientation: RoofOrientation;
+  roofPitchDegrees: number | null;
+  shadeLevel: ShadeLevel;
+  sunHoursPerDay: number | null;
+  capacityFactorPercent: number | null;
+  assumptions: string[];
+  warnings: string[];
+}
+
 export interface RoofAssessmentInput {
   photos: UploadedPhoto[];
   details: PropertyDetails;
   photoEvidence?: PhotoEvidence[];
+  solarOpportunity?: SolarOpportunityEstimate;
   visionConfigured?: boolean;
   visionObservationUsed?: boolean;
 }
@@ -99,6 +151,7 @@ export interface ReadinessReport {
   solarReadinessFactors: string[];
   questionsToAsk: string[];
   photoEvidence: PhotoEvidence[];
+  solarOpportunity?: SolarOpportunityEstimate;
   suggestedTalkTrack: string;
   disclaimer: string;
   leadQualityScore: number;

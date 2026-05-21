@@ -15,6 +15,7 @@ import {
   Home,
   ImagePlus,
   Info,
+  Loader2,
   LockKeyhole,
   MessageSquareWarning,
   Printer,
@@ -24,6 +25,7 @@ import {
   Share2,
   ShieldCheck,
   Sparkles,
+  Sun,
   Trash2,
   UploadCloud,
   Zap
@@ -39,6 +41,14 @@ import {
   roofMaterialLabels,
   toUploadedPhoto
 } from "./lib/roofReadiness";
+import {
+  analyzeSolarOpportunity,
+  defaultSolarAssumptions,
+  estimateSolarOpportunity,
+  isPvWattsConfigured,
+  roofOrientationLabels,
+  shadeLevelLabels
+} from "./lib/solarOpportunity";
 import {
   defaultCompanyProfile,
   deleteReport,
@@ -56,8 +66,12 @@ import type {
   PropertyDetails,
   ReadinessReport,
   RecommendationStatus,
+  RoofOrientation,
   RoofRiskScores,
   SavedReadinessReport,
+  ShadeLevel,
+  SolarOpportunityAssumptions,
+  SolarOpportunityEstimate,
   UploadedPhoto,
   VisibleConditionFlag
 } from "./types/roof";
@@ -96,6 +110,8 @@ const statusTheme: Record<RecommendationStatus, { tone: string; icon: ReactNode 
 };
 
 const defaultDemoScenarioId = "replacement-first";
+
+const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const guidedDemoCompanyProfile: CompanyProfile = {
   companyName: "Northstar Roof + Solar",
@@ -391,6 +407,7 @@ function ReadinessApp() {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [photoEvidence, setPhotoEvidence] = useState<PhotoEvidence[]>([]);
   const [details, setDetails] = useState<PropertyDetails>(emptyPropertyDetails);
+  const [solarAssumptions, setSolarAssumptions] = useState<SolarOpportunityAssumptions>(defaultSolarAssumptions);
   const [company, setCompany] = useState<CompanyProfile>(defaultCompanyProfile);
   const [savedReports, setSavedReports] = useState<SavedReadinessReport[]>([]);
   const [activeReport, setActiveReport] = useState<SavedReadinessReport | null>(null);
@@ -399,9 +416,14 @@ function ReadinessApp() {
   const [fileError, setFileError] = useState<string>("");
   const [notice, setNotice] = useState<Notice>(null);
   const [limitsAccepted, setLimitsAccepted] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const visionConfigured = isVisionAnalysisConfigured();
-  const readinessChecks = useMemo(() => getReadinessChecks(photos, details), [photos, details]);
+  const pvWattsConfigured = isPvWattsConfigured();
+  const readinessChecks = useMemo(
+    () => getReadinessChecks(photos, details, solarAssumptions),
+    [photos, details, solarAssumptions]
+  );
   const dashboardReports = useMemo(
     () => (isDemoMode && activeReport ? [activeReport, ...savedReports] : savedReports),
     [activeReport, isDemoMode, savedReports]
@@ -447,6 +469,15 @@ function ReadinessApp() {
 
   function updateDetails<K extends keyof PropertyDetails>(key: K, value: PropertyDetails[K]) {
     setDetails((current) => ({ ...current, [key]: value }));
+    setActiveReport(null);
+    clearReportUrl();
+  }
+
+  function updateSolarAssumptions<K extends keyof SolarOpportunityAssumptions>(
+    key: K,
+    value: SolarOpportunityAssumptions[K]
+  ) {
+    setSolarAssumptions((current) => ({ ...current, [key]: value }));
     setActiveReport(null);
     clearReportUrl();
   }
@@ -594,11 +625,14 @@ function ReadinessApp() {
       demoPhotos,
       scenario.photoEvidence.map((item) => clonePhotoEvidence(item))
     );
+    const demoSolarAssumptions = { ...scenario.solarAssumptions };
+    const demoSolarOpportunity = estimateSolarOpportunity(demoDetails, demoSolarAssumptions);
     const demoCompany = getGuidedDemoCompanyProfile(options.companyOverride ?? company);
 
     setDetails(demoDetails);
     setPhotos(demoPhotos);
     setPhotoEvidence(demoEvidence);
+    setSolarAssumptions(demoSolarAssumptions);
     setCompany(demoCompany);
     setActiveReport(null);
     setIsDemoMode(true);
@@ -611,6 +645,7 @@ function ReadinessApp() {
         photos: demoPhotos,
         details: demoDetails,
         photoEvidence: demoEvidence,
+        solarOpportunity: demoSolarOpportunity,
         visionConfigured,
         visionObservationUsed: false
       });
@@ -637,6 +672,7 @@ function ReadinessApp() {
     setDetails(emptyPropertyDetails);
     setPhotos([]);
     setPhotoEvidence([]);
+    setSolarAssumptions(defaultSolarAssumptions);
     setActiveReport(null);
     setIsDemoMode(false);
     setActiveDemoScenarioId(null);
@@ -655,7 +691,7 @@ function ReadinessApp() {
     document.getElementById("workflow")?.scrollIntoView({ behavior: "smooth" });
   }
 
-  function handleAnalyze(event: FormEvent<HTMLFormElement>) {
+  async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!limitsAccepted) {
@@ -663,27 +699,41 @@ function ReadinessApp() {
       return;
     }
 
-    const evidenceForPhotos = syncPhotoEvidenceForPhotos(photos, photoEvidence);
-    const detailsForReport = applyPhotoEvidenceToDetails(details, evidenceForPhotos);
-    const report = analyzeRoofReadiness({
-      photos,
-      details: detailsForReport,
-      photoEvidence: evidenceForPhotos,
-      visionConfigured,
-      visionObservationUsed: false
-    });
-    const saved = buildSavedReport(report, detailsForReport, photos, company);
-    const nextReports = saveReport(stripSessionPhotoUrls(saved));
+    setIsAnalyzing(true);
 
-    setSavedReports(nextReports);
-    setActiveReport(saved);
-    setDetails(detailsForReport);
-    setPhotoEvidence(evidenceForPhotos);
-    setIsDemoMode(false);
-    setActiveDemoScenarioId(null);
-    setNotice({ type: "success", message: "Report generated and saved locally." });
-    setReportUrl(saved.id);
-    requestAnimationFrame(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }));
+    try {
+      const evidenceForPhotos = syncPhotoEvidenceForPhotos(photos, photoEvidence);
+      const detailsForReport = applyPhotoEvidenceToDetails(details, evidenceForPhotos);
+      const solarOpportunity = await analyzeSolarOpportunity(detailsForReport, solarAssumptions);
+      const report = analyzeRoofReadiness({
+        photos,
+        details: detailsForReport,
+        photoEvidence: evidenceForPhotos,
+        solarOpportunity,
+        visionConfigured,
+        visionObservationUsed: false
+      });
+      const saved = buildSavedReport(report, detailsForReport, photos, company);
+      const nextReports = saveReport(stripSessionPhotoUrls(saved));
+
+      setSavedReports(nextReports);
+      setActiveReport(saved);
+      setDetails(detailsForReport);
+      setPhotoEvidence(evidenceForPhotos);
+      setIsDemoMode(false);
+      setActiveDemoScenarioId(null);
+      setNotice({
+        type: "success",
+        message:
+          solarOpportunity.source === "nrel-pvwatts"
+            ? "Report generated with NREL PVWatts solar estimate and saved locally."
+            : "Report generated with local solar opportunity estimate and saved locally."
+      });
+      setReportUrl(saved.id);
+      requestAnimationFrame(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }));
+    } finally {
+      setIsAnalyzing(false);
+    }
   }
 
   function loadReport(reportId: string) {
@@ -878,6 +928,7 @@ function ReadinessApp() {
                 value={details.roofAgeYears}
                 onChange={(value) => updateDetails("roofAgeYears", value)}
                 placeholder="12"
+                max={80}
               />
               <label className="field">
                 <span>Roof material/type</span>
@@ -913,6 +964,12 @@ function ReadinessApp() {
                 ))}
               </select>
             </label>
+
+            <SolarOpportunityInputs
+              assumptions={solarAssumptions}
+              pvWattsConfigured={pvWattsConfigured}
+              onChange={updateSolarAssumptions}
+            />
 
             <div className="condition-section">
               <div>
@@ -964,9 +1021,9 @@ function ReadinessApp() {
                   ? "Vision adapter flag is enabled, but no provider is connected in this client-only MVP."
                   : "Rule-based from provided inputs. AI vision requires a future server-side provider."}
               </div>
-              <button className="button primary" type="submit">
-                <Save size={18} />
-                Generate and save report
+              <button className="button primary" type="submit" disabled={isAnalyzing}>
+                {isAnalyzing ? <Loader2 size={18} className="spin" /> : <Save size={18} />}
+                {isAnalyzing ? "Generating report..." : "Generate and save report"}
               </button>
             </div>
           </section>
@@ -1316,20 +1373,24 @@ function NumberField({
   label,
   value,
   onChange,
-  placeholder
+  placeholder,
+  min = 0,
+  max
 }: {
   label: string;
   value: number | null;
   onChange: (value: number | null) => void;
   placeholder: string;
+  min?: number;
+  max?: number;
 }) {
   return (
     <label className="field">
       <span>{label}</span>
       <input
         type="number"
-        min="0"
-        max="80"
+        min={min}
+        max={max}
         value={value ?? ""}
         onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))}
         placeholder={placeholder}
@@ -1364,6 +1425,90 @@ function SegmentedStatus({
         ))}
       </div>
     </div>
+  );
+}
+
+function SolarOpportunityInputs({
+  assumptions,
+  pvWattsConfigured,
+  onChange
+}: {
+  assumptions: SolarOpportunityAssumptions;
+  pvWattsConfigured: boolean;
+  onChange: <K extends keyof SolarOpportunityAssumptions>(key: K, value: SolarOpportunityAssumptions[K]) => void;
+}) {
+  const estimatedPanels =
+    assumptions.usableRoofAreaSqft && assumptions.usableRoofAreaSqft > 0
+      ? Math.max(1, Math.floor(assumptions.usableRoofAreaSqft / 21.5))
+      : null;
+  const estimatedWatts = estimatedPanels ? estimatedPanels * assumptions.panelWattage : null;
+
+  return (
+    <section className="solar-input-card">
+      <div className="solar-input-heading">
+        <div className="section-icon">
+          <Sun size={20} />
+        </div>
+        <div>
+          <h3>Solar opportunity inputs</h3>
+          <p>
+            Estimate solar potential from address-level data plus rep-confirmed roof assumptions. Final design still needs
+            site survey, shading review, setbacks, and installer modeling.
+          </p>
+        </div>
+      </div>
+
+      <div className="field-grid">
+        <NumberField
+          label="Usable roof area"
+          value={assumptions.usableRoofAreaSqft}
+          onChange={(value) => onChange("usableRoofAreaSqft", value)}
+          placeholder="520"
+        />
+        <label className="field">
+          <span>Primary solar roof direction</span>
+          <select
+            value={assumptions.roofOrientation}
+            onChange={(event) => onChange("roofOrientation", event.target.value as RoofOrientation)}
+          >
+            {Object.entries(roofOrientationLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <NumberField
+          label="Roof pitch degrees"
+          value={assumptions.roofPitchDegrees}
+          onChange={(value) => onChange("roofPitchDegrees", value)}
+          placeholder="24"
+        />
+        <NumberField
+          label="Panel wattage"
+          value={assumptions.panelWattage}
+          onChange={(value) => onChange("panelWattage", value ?? 410)}
+          placeholder="410"
+        />
+      </div>
+
+      <label className="field">
+        <span>Shade level</span>
+        <select value={assumptions.shadeLevel} onChange={(event) => onChange("shadeLevel", event.target.value as ShadeLevel)}>
+          {Object.entries(shadeLevelLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="solar-estimate-preview">
+        <span>{estimatedWatts ? `${estimatedWatts.toLocaleString()} W DC estimate` : "Add usable roof area for watt estimate"}</span>
+        <span>{estimatedPanels ? `${estimatedPanels} panels assumed` : "Panel count pending"}</span>
+        <span>{pvWattsConfigured ? "NREL PVWatts enabled" : "Local estimate until NREL key is added"}</span>
+      </div>
+    </section>
   );
 }
 
@@ -1457,6 +1602,8 @@ function ReportSection({
 
         <ScoreBoard scores={report.scores} leadQualityScore={report.leadQualityScore} />
 
+        <SolarOpportunityReport estimate={report.solarOpportunity} />
+
         <div className="report-grid">
           <ReportBlock title="Key observations" items={report.keyObservations} />
           <ReportBlock title="Roof risk factors" items={report.roofRiskFactors} />
@@ -1508,6 +1655,93 @@ function ReportPlaceholder({ visionConfigured }: { visionConfigured: boolean }) 
   );
 }
 
+function SolarOpportunityReport({ estimate }: { estimate?: SolarOpportunityEstimate }) {
+  if (!estimate) return null;
+
+  const maxMonthlyProduction = Math.max(...estimate.monthlyProductionKwh, 1);
+
+  return (
+    <section className="solar-report-card">
+      <div className="solar-report-header">
+        <div>
+          <p className="eyebrow">Solar Opportunity</p>
+          <h3>{estimate.source === "nrel-pvwatts" ? "NREL PVWatts production estimate" : "Preliminary local solar estimate"}</h3>
+          <span>
+            Score {estimate.solarScore}/100 · {estimate.confidence} confidence ·{" "}
+            {estimate.geocode.status === "matched" ? "Address matched" : "Address-level data pending"}
+          </span>
+        </div>
+        <div className="solar-score">
+          <Sun size={20} />
+          <strong>{estimate.solarScore}</strong>
+          <span>Solar score</span>
+        </div>
+      </div>
+
+      <div className="solar-kpi-grid">
+        <SolarKpi label="System size" value={estimate.systemCapacityKw ? `${estimate.systemCapacityKw} kW DC` : "Pending"} />
+        <SolarKpi label="Estimated watts" value={estimate.estimatedDcWatts ? `${estimate.estimatedDcWatts.toLocaleString()} W` : "Pending"} />
+        <SolarKpi label="Annual production" value={estimate.annualProductionKwh ? `${estimate.annualProductionKwh.toLocaleString()} kWh` : "Pending"} />
+        <SolarKpi label="Panels assumed" value={estimate.panelCount ? String(estimate.panelCount) : "Pending"} />
+      </div>
+
+      <div className="solar-detail-grid">
+        <div>
+          <h4>Roof assumptions</h4>
+          <ul>
+            <li>Usable area: {estimate.usableRoofAreaSqft ? `${estimate.usableRoofAreaSqft.toLocaleString()} sq ft` : "Pending"}</li>
+            <li>Direction: {roofOrientationLabels[estimate.roofOrientation]}</li>
+            <li>Pitch: {estimate.roofPitchDegrees ?? 20} degrees</li>
+            <li>Shade: {shadeLevelLabels[estimate.shadeLevel]}</li>
+          </ul>
+        </div>
+        <div>
+          <h4>Data source</h4>
+          <ul>
+            <li>{estimate.source === "nrel-pvwatts" ? "NREL PVWatts API" : "Local fallback model"}</li>
+            <li>{estimate.geocode.matchedAddress ?? estimate.geocode.message ?? "Coordinates not available"}</li>
+            <li>
+              {estimate.sunHoursPerDay
+                ? `${estimate.sunHoursPerDay.toFixed(1)} kWh/m2/day solar resource`
+                : "Sun resource available when PVWatts returns data"}
+            </li>
+            <li>
+              {estimate.capacityFactorPercent
+                ? `${estimate.capacityFactorPercent}% estimated capacity factor`
+                : "Capacity factor pending"}
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      {estimate.monthlyProductionKwh.length > 0 ? (
+        <div className="monthly-solar-chart" aria-label="Estimated monthly solar production">
+          {estimate.monthlyProductionKwh.map((value, index) => (
+            <div className="monthly-solar-bar" key={monthLabels[index]}>
+              <span style={{ height: `${Math.max(12, (value / maxMonthlyProduction) * 100)}%` }} />
+              <small>{monthLabels[index]}</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="solar-notes-grid">
+        <ReportBlock title="Solar assumptions" items={estimate.assumptions} />
+        <ReportBlock title="Solar estimate cautions" items={estimate.warnings.length ? estimate.warnings : ["No estimate cautions entered."]} />
+      </div>
+    </section>
+  );
+}
+
+function SolarKpi({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="solar-kpi">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function ScoreBoard({ scores, leadQualityScore }: { scores: RoofRiskScores; leadQualityScore: number }) {
   const scoreItems = [
     { label: "Roof age risk", value: scores.roofAgeRisk, polarity: "risk" },
@@ -1548,7 +1782,11 @@ function ReportBlock({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function getReadinessChecks(photos: UploadedPhoto[], details: PropertyDetails): string[] {
+function getReadinessChecks(
+  photos: UploadedPhoto[],
+  details: PropertyDetails,
+  solarAssumptions: SolarOpportunityAssumptions
+): string[] {
   const checks: string[] = [];
 
   if (photos.length === 0) checks.push("Add roof photos or expect low confidence.");
@@ -1559,6 +1797,9 @@ function getReadinessChecks(photos: UploadedPhoto[], details: PropertyDetails): 
   if (details.knownLeaks === "unknown") checks.push("Confirm leak history.");
   if (details.desiredOutcome === "unknown") checks.push("Confirm desired outcome.");
   if (details.visibleConditionFlags.includes("limited-or-unclear-photos")) checks.push("Replace unclear photos or keep inspection-first confidence.");
+  if (!solarAssumptions.usableRoofAreaSqft) checks.push("Add usable roof area for solar wattage and production estimate.");
+  if (solarAssumptions.roofOrientation === "unknown") checks.push("Confirm primary solar roof direction.");
+  if (solarAssumptions.shadeLevel === "unknown") checks.push("Confirm shade level for solar score.");
 
   return checks;
 }
@@ -1725,6 +1966,15 @@ function buildClipboardSummary(report: ReadinessReport, details: PropertyDetails
         })
       ]
     : [];
+  const solarOpportunityLines = report.solarOpportunity
+    ? [
+        "Solar opportunity:",
+        `- Source: ${report.solarOpportunity.source === "nrel-pvwatts" ? "NREL PVWatts" : "Local assumption model"}`,
+        `- Solar score: ${report.solarOpportunity.solarScore}/100 (${report.solarOpportunity.confidence} confidence)`,
+        `- System size: ${report.solarOpportunity.systemCapacityKw ? `${report.solarOpportunity.systemCapacityKw} kW DC` : "Pending"}`,
+        `- Annual production: ${report.solarOpportunity.annualProductionKwh ? `${report.solarOpportunity.annualProductionKwh.toLocaleString()} kWh` : "Pending"}`
+      ]
+    : [];
 
   return [
     `${company.companyName || "Roof Signal"} Readiness Report`,
@@ -1735,6 +1985,7 @@ function buildClipboardSummary(report: ReadinessReport, details: PropertyDetails
     `Sales path: ${report.recommendation.recommendedSalesPath}`,
     `Next action: ${report.recommendation.nextBestAction}`,
     `Talk track: ${report.suggestedTalkTrack}`,
+    ...solarOpportunityLines,
     ...photoEvidenceLines,
     `Disclaimer: ${report.disclaimer}`
   ].join("\n");

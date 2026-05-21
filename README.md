@@ -13,6 +13,8 @@ This repository is a client-side MVP. It is suitable for portfolio demos, prospe
 - Multiple roof photo upload with previews and file validation.
 - Photo evidence workflow with per-photo captions and rep-confirmed observation tags.
 - Property/job intake fields for roof age, material, leaks, existing solar, utility bill status, desired outcome, and rep notes.
+- Solar opportunity inputs for usable roof area, roof direction, pitch, panel wattage, and shade.
+- Preliminary solar score, estimated DC watts, panel count, annual production, and monthly production chart.
 - Transparent rule-based scoring for roof age risk, visible condition risk, leak risk, urgency, solar readiness, data completeness, and lead quality.
 - Homeowner-friendly readiness report with transparent scores, photo evidence, homeowner questions, next action, and disclaimer.
 - Local report history, company branding fields, print-friendly output, copyable summaries, and demo scenarios.
@@ -24,6 +26,7 @@ This repository is a client-side MVP. It is suitable for portfolio demos, prospe
 - Hosted share links that work across devices.
 - Billing.
 - CRM integrations.
+- Automatic roof-plane measurement, usable surface area detection, shading analysis, or final solar design.
 - Real AI vision analysis. The current product does not inspect image pixels automatically.
 
 ## Tech stack
@@ -77,11 +80,18 @@ This repo is connected to Cloudflare Pages for automatic deployments. Pushing to
 
 Copy `.env.example` to `.env.local` if you are experimenting with future integrations. Do not put production AI provider keys in client-exposed `VITE_*` variables. Real vision analysis should run through a server-side API route or backend function.
 
+Optional solar estimate integration:
+
+- U.S. Census Geocoder is used without a key for address-to-coordinate lookup when a report is generated.
+- Add `VITE_NREL_API_KEY` to enable NREL PVWatts V8 production estimates in local/demo mode.
+- Without an NREL key or matched address, the app falls back to a local assumption-based solar estimate.
+- Final roof area, shade, setbacks, panel layout, and production modeling still require a site survey and installer design tool.
+
 ## Product positioning
 
 Honest claim today:
 
-> Generate a rule-based roof/solar readiness report from rep-entered job details, uploaded roof photos, and rep-confirmed photo evidence tags.
+> Generate a rule-based roof/solar readiness report from rep-entered job details, uploaded roof photos, rep-confirmed photo evidence tags, and preliminary solar opportunity assumptions.
 
 Next production milestone:
 

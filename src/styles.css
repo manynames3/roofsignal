@@ -45,6 +45,21 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .app-shell {
   min-height: 100vh;
 }
@@ -1208,6 +1223,56 @@ main {
   line-height: 1.45;
 }
 
+.solar-input-card {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #cfe0d2;
+  border-radius: 8px;
+  background: #f7fbf5;
+}
+
+.solar-input-heading {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.solar-input-heading h3,
+.solar-input-heading p {
+  margin: 0;
+}
+
+.solar-input-heading h3 {
+  font-size: 1rem;
+}
+
+.solar-input-heading p {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.solar-estimate-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.solar-estimate-preview span {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  border: 1px solid #d6e4d2;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #315545;
+  background: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
 .chip-grid {
   display: flex;
   flex-wrap: wrap;
@@ -1525,6 +1590,145 @@ main {
   background: linear-gradient(90deg, #e0a03c, #ba4038);
 }
 
+.solar-report-card {
+  margin: 0 0 18px;
+  padding: 20px;
+  border: 1px solid #d2e3d3;
+  border-radius: 8px;
+  background: #f8fbf5;
+}
+
+.solar-report-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.solar-report-header h3,
+.solar-report-header p {
+  margin: 0;
+}
+
+.solar-report-header h3 {
+  margin-top: 4px;
+  font-size: 1.35rem;
+}
+
+.solar-report-header span {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.solar-score {
+  display: grid;
+  justify-items: center;
+  min-width: 118px;
+  border: 1px solid #d8e4d2;
+  border-radius: 8px;
+  padding: 12px;
+  color: #0f6949;
+  background: #ffffff;
+}
+
+.solar-score strong {
+  color: var(--ink);
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.solar-score span {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.solar-kpi-grid,
+.solar-detail-grid,
+.solar-notes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.solar-kpi-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.solar-kpi,
+.solar-detail-grid > div {
+  border: 1px solid #dce4d8;
+  border-radius: 8px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.solar-kpi span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.solar-kpi strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.1rem;
+}
+
+.solar-detail-grid h4 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.solar-detail-grid ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: #4b5a51;
+  line-height: 1.4;
+}
+
+.monthly-solar-chart {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: end;
+  gap: 7px;
+  height: 140px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #dce4d8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.monthly-solar-bar {
+  display: grid;
+  align-items: end;
+  gap: 7px;
+  height: 100%;
+  text-align: center;
+}
+
+.monthly-solar-bar span {
+  display: block;
+  width: 100%;
+  border-radius: 7px 7px 2px 2px;
+  background: linear-gradient(180deg, #f2b84d, #16a36a);
+}
+
+.monthly-solar-bar small {
+  color: #68746d;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
 .report-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1726,6 +1930,7 @@ main {
   }
 
   .score-board,
+  .solar-kpi-grid,
   .segmented-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1736,6 +1941,7 @@ main {
   .topbar,
   .report-toolbar,
   .report-brand,
+  .solar-report-header,
   .next-action,
   .report-placeholder,
   .analyze-row {
@@ -1785,10 +1991,18 @@ main {
   .compact-field-grid,
   .field-grid,
   .photo-evidence-grid,
+  .solar-detail-grid,
+  .solar-notes-grid,
   .report-grid,
   .score-board,
+  .solar-kpi-grid,
   .segmented-grid {
     grid-template-columns: 1fr;
+  }
+
+  .monthly-solar-chart {
+    gap: 4px;
+    padding: 10px 8px;
   }
 
   .photo-grid {
@@ -1878,6 +2092,7 @@ main {
   }
 
   .report-block,
+  .solar-report-card,
   .photo-evidence-report,
   .photo-evidence-report-card,
   .next-action,

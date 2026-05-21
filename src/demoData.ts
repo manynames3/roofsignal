@@ -1,4 +1,10 @@
-import type { PhotoEvidence, PropertyDetails, UploadedPhoto, VisibleConditionFlag } from "./types/roof";
+import type {
+  PhotoEvidence,
+  PropertyDetails,
+  SolarOpportunityAssumptions,
+  UploadedPhoto,
+  VisibleConditionFlag
+} from "./types/roof";
 
 export interface DemoScenario {
   id: string;
@@ -7,6 +13,7 @@ export interface DemoScenario {
   details: PropertyDetails;
   photos: UploadedPhoto[];
   photoEvidence: PhotoEvidence[];
+  solarAssumptions: SolarOpportunityAssumptions;
 }
 
 const DEMO_LAST_MODIFIED = new Date("2026-05-20T00:00:00.000Z").getTime();
@@ -67,6 +74,13 @@ export const demoScenarios: DemoScenario[] = [
       evidence("demo-ready-2", "missingPatch", "Ridge and slope photo included for appointment confirmation.", []),
       evidence("demo-ready-3", "chimneyFlashing", "Flashing-area photo included for final field confirmation.", [])
     ],
+    solarAssumptions: {
+      usableRoofAreaSqft: 640,
+      roofOrientation: "south",
+      roofPitchDegrees: 22,
+      panelWattage: 410,
+      shadeLevel: "low"
+    },
     details: {
       homeownerName: "Maya Carter",
       propertyAddress: "1840 Ridgeview Lane",
@@ -96,6 +110,13 @@ export const demoScenarios: DemoScenario[] = [
       evidence("demo-repair-3", "missingPatch", "Localized missing-shingle or patch area should be addressed before panels go on.", ["missing-or-damaged-shingles"]),
       evidence("demo-repair-4", "granuleWear", "Wide slope photo provides broader roof context for the appointment.", [])
     ],
+    solarAssumptions: {
+      usableRoofAreaSqft: 500,
+      roofOrientation: "south-west",
+      roofPitchDegrees: 26,
+      panelWattage: 410,
+      shadeLevel: "moderate"
+    },
     details: {
       homeownerName: "Jordan Lee",
       propertyAddress: "742 Oak Ridge Dr",
@@ -134,6 +155,13 @@ export const demoScenarios: DemoScenario[] = [
       evidence("demo-replace-5", "chimneyFlashing", "Chimney area shows flashing and shingle interface concerns.", ["damaged-flashing-or-penetrations"]),
       evidence("demo-replace-6", "missingPatch", "Patch or missing-shingle area near the ridge should be inspected before solar quoting.", ["missing-or-damaged-shingles"])
     ],
+    solarAssumptions: {
+      usableRoofAreaSqft: 720,
+      roofOrientation: "south-west",
+      roofPitchDegrees: 28,
+      panelWattage: 410,
+      shadeLevel: "moderate"
+    },
     details: {
       homeownerName: "Sam Rivera",
       propertyAddress: "29 Cedar Point Road",

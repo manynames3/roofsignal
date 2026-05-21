@@ -254,6 +254,7 @@ export function analyzeRoofReadiness(input: RoofAssessmentInput): ReadinessRepor
     solarReadinessFactors: buildSolarReadinessFactors(input, scores),
     questionsToAsk: buildQuestions(input, recommendation.status),
     photoEvidence: buildPhotoEvidence(input),
+    solarOpportunity: input.solarOpportunity,
     suggestedTalkTrack: getTalkTrack(recommendation.status),
     disclaimer:
       "This report is a pre-appointment readiness assessment based on uploaded photos and homeowner-provided information. It does not replace a licensed roofer, engineer, inspector, insurance adjuster, utility, or permitting authority.",
@@ -372,6 +373,12 @@ function buildSolarReadinessFactors(input: RoofAssessmentInput, scores: RoofRisk
 
   if (input.details.desiredOutcome === "roof-and-solar") {
     factors.push("Homeowner interest already supports a roof + solar bundle conversation.");
+  }
+
+  if (input.solarOpportunity?.annualProductionKwh) {
+    factors.push(
+      `Preliminary solar opportunity estimate: ${input.solarOpportunity.annualProductionKwh.toLocaleString()} kWh/year from a ${input.solarOpportunity.systemCapacityKw ?? "pending"} kW DC system.`
+    );
   }
 
   return factors;
