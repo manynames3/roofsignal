@@ -5,23 +5,19 @@ import {
   BarChart3,
   BriefcaseBusiness,
   Building2,
-  CalendarCheck,
   CheckCircle2,
   Clipboard,
   ClipboardCheck,
   FileText,
   FileDown,
   FolderOpen,
-  Home,
   ImagePlus,
   Info,
   Loader2,
   Menu,
   LockKeyhole,
-  MessageSquareWarning,
   Printer,
   RotateCcw,
-  Route,
   Save,
   Settings,
   Share2,
@@ -30,9 +26,9 @@ import {
   Sun,
   Trash2,
   UploadCloud,
-  X,
-  Zap
+  X
 } from "lucide-react";
+import { Brand } from "./components/Brand";
 import { demoScenarios, type DemoScenario } from "./demoData";
 import { csvCell } from "./lib/csv";
 import {
@@ -173,22 +169,17 @@ function LandingPage() {
       <a className="skip-link" href="#main">Skip to content</a>
       <header className="landing-topbar">
         <a className="brand-lockup" href="/" aria-label="Roof Signal home">
-          <div className="brand-mark">
-            <Home size={22} />
-          </div>
-          <div>
-            <strong>Roof Signal</strong>
-          </div>
+          <Brand />
         </a>
         <button className="icon-button menu-toggle" type="button" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} aria-controls="landing-navigation" onClick={() => setMenuOpen(!menuOpen)}>
           {menuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
         <nav id="landing-navigation" className={`landing-nav ${menuOpen ? "is-open" : ""}`} aria-label="Landing page navigation" onClick={() => setMenuOpen(false)}>
-          <a href="#problem">Problem</a>
+          <a href="#problem">The report</a>
           <a href="#how-it-works">How it works</a>
           <a href="#faq">FAQ</a>
-          <a className="button secondary" href="/app">
-            Open sample report <ArrowRight size={16} />
+          <a className="button primary" href="/app">
+            View sample <ArrowRight size={16} />
           </a>
         </nav>
       </header>
@@ -196,114 +187,69 @@ function LandingPage() {
       <main id="main" className="landing-main">
         <section className="landing-hero">
           <div className="landing-hero-copy">
-            <span className="eyebrow">For roof + solar sales teams</span>
+            <span className="eyebrow">Pre-appointment roof + solar readiness</span>
             <h1>Roof Signal</h1>
-            <h2>The roof comes first.</h2>
+            <p className="hero-tagline">Know the roof. Lead with confidence.</p>
             <p>
-              Turn roof photos and job details into a clear starting point for the roof + solar conversation.
-              Review the evidence. Understand the risks. Arrive prepared.
+              Turn roof photos and job details into a clear plan for the appointment.
             </p>
             <div className="hero-actions">
               <a className="button primary" href="/app">
-                Explore sample report
+                View sample report
                 <ArrowRight size={18} />
               </a>
               <a className="button ghost" href="/app?blank=1#workflow">
-                Start blank report
+                Start a blank report
               </a>
             </div>
             <div className="promise-strip">
               <CheckCircle2 size={18} />
-              <span>Pre-appointment triage. Qualified roof review still comes first.</span>
+              <span>No account needed to explore the sample.</span>
             </div>
           </div>
           <span className="hero-photo-caption">Sample roof evidence / visible shingle wear</span>
         </section>
 
-        <section id="problem" className="landing-section split-section">
-          <div>
-            <p className="eyebrow">The broken workflow</p>
-            <h2>Reps walk into appointments with photos, guesses, and no consistent sales path.</h2>
+        <section id="problem" className="landing-section product-section">
+          <div className="section-intro">
+            <div>
+              <p className="eyebrow">From evidence to next step</p>
+              <h2>The right conversation starts with the roof.</h2>
+              <p className="section-copy">Scattered photos become one report. Roof timing comes before the solar pitch.</p>
+            </div>
+            <a className="text-link" href="/app">Explore the full report <ArrowRight size={17} /></a>
           </div>
-          <div className="pain-list">
-            <PainItem title="Solar gets pitched before roof timing is clear" text="That creates awkward homeowner conversations when the roof later needs work." />
-            <PainItem title="Roof concerns live in scattered notes" text="A few photos, a text thread, and a memory of a leak are not enough for a repeatable process." />
-            <PainItem title="Bundle opportunities are easy to miss" text="Older roofs and moderate repair needs should shape the offer before the rep quotes solar-only." />
-          </div>
-        </section>
-
-        <section className="landing-section solution-section">
-          <p className="eyebrow">The product</p>
-          <h2>A readiness report that tells the rep what conversation to lead with.</h2>
-          <div className="solution-grid">
-            <SolutionCard icon={<UploadCloud size={22} />} title="Collect the roof context" text="Upload roof photos and enter age, material, leak history, existing solar, utility bill status, and homeowner goal." />
-            <SolutionCard icon={<BarChart3 size={22} />} title="Score the risk openly" text="Roof age, visible condition, leak risk, urgency, solar readiness, data completeness, and lead quality are scored in plain view." />
-            <SolutionCard icon={<MessageSquareWarning size={22} />} title="Give the rep a safer script" text="The report includes what to say, what to avoid saying, next best action, and bundle positioning." />
-          </div>
-        </section>
-
-        <section className="landing-section benefits-section">
-          <p className="eyebrow">Built for appointment preparation</p>
-          <h2>Built around the sales decision that actually matters.</h2>
-          <div className="benefit-grid">
-            <BenefitCard title="Avoid bad sequencing" text="Do not sell a solar-first story when the roof should shape the project scope." />
-            <BenefitCard title="Increase bundle clarity" text="Flag roof + solar opportunities before the appointment instead of discovering them late." />
-            <BenefitCard title="Standardize rep judgment" text="Give new and experienced reps the same triage language and scoring structure." />
-            <BenefitCard title="Reduce trust risk" text="Use cautious homeowner-safe language that does not pretend to replace an inspection." />
-          </div>
+          <SampleReportPreview />
         </section>
 
         <section id="how-it-works" className="landing-section how-section">
           <p className="eyebrow">How it works</p>
-          <h2>Three steps before the rep walks in.</h2>
+          <h2>Arrive with a plan.</h2>
           <div className="steps-grid">
-            <StepCard number="1" title="Upload roof photos" text="Use slope, shingles, valleys, gutters, flashing, wide exterior, and interior stain photos when available." />
-            <StepCard number="2" title="Add job details" text="Enter roof age, material, leak status, existing solar, utility bill status, homeowner goal, and rep notes." />
-            <StepCard number="3" title="Generate the report" text="Save a branded readiness report with scores, sales path, homeowner questions, next action, and print export." />
-          </div>
-        </section>
-
-        <section className="landing-section usecase-section">
-          <p className="eyebrow">Use cases</p>
-          <h2>Specific moments where this earns its keep.</h2>
-          <div className="usecase-grid">
-            <UseCase title="Pre-qualify solar appointments" text="Know if solar-first is reasonable before the rep starts savings and system-size conversations." />
-            <UseCase title="Prepare roof + solar bundle offers" text="Identify older roofs, leaks, and visible wear that should lead to a bundled conversation." />
-            <UseCase title="Train appointment setters" text="Give setters a structured way to collect roof context before handing the appointment to sales." />
-            <UseCase title="Create a homeowner-facing handoff" text="Print or copy a report that explains the tradeoff without fearmongering." />
-          </div>
-        </section>
-
-        <section className="landing-section differentiation-section">
-          <p className="eyebrow">Why not the usual workaround?</p>
-          <h2>Generic tools do not give reps a roof/solar sales path.</h2>
-          <div className="objection-grid">
-            <Objection title="ChatGPT" text="It can draft text, but it does not enforce a repeatable roof/solar scoring workflow or sales-path output." />
-            <Objection title="Spreadsheets" text="They can store fields, but they do not produce a homeowner-ready report, talk track, and next-best-action." />
-            <Objection title="Zapier or n8n" text="They move data between tools. They do not decide whether the rep should lead solar, repair, replacement, or inspection." />
-            <Objection title="Manual review" text="It depends on the rep. Roof Signal makes the triage consistent enough to review, train, and improve." />
+            <StepCard number="01" title="Bring the evidence" text="Add roof photos, age, leak history, and the homeowner's goal." />
+            <StepCard number="02" title="Review the signals" text="Confirm observations and see the inputs behind every score." />
+            <StepCard number="03" title="Lead the conversation" text="Take a clear next step and a printable report to the appointment." />
           </div>
         </section>
 
         <section className="landing-section trust-section">
           <div>
-            <p className="eyebrow">Trust boundaries</p>
-            <h2>Clear about what it does and what it does not do.</h2>
+            <p className="eyebrow">Judgment stays with you</p>
+            <h2>Clear signals.<br />No black box.</h2>
           </div>
           <div className="trust-grid">
-            <TrustItem icon={<ShieldCheck size={21} />} title="Transparent recommendations" text="Recommendations come from transparent scoring, with Gemini suggestions kept as rep-confirmed draft evidence." />
-            <TrustItem icon={<LockKeyhole size={21} />} title="AWS hosted path" text="Hosted accounts use Cognito, private S3 photo storage, DynamoDB report records, and expiring share links." />
-            <TrustItem icon={<FileText size={21} />} title="No inspection claim" text="Reports are pre-appointment triage and do not replace a licensed roofer, engineer, inspector, utility, or permitting authority." />
+            <TrustItem icon={<ShieldCheck size={21} />} title="Scores you can explain" text="Rule-based recommendations show the evidence and inputs behind the result." />
+            <TrustItem icon={<Sparkles size={21} />} title="AI assists. You confirm." text="Optional photo suggestions stay draft evidence until the rep accepts them." />
+            <TrustItem icon={<FileText size={21} />} title="Triage, not an inspection" text="Final roof scope and solar design still need qualified professional review." />
           </div>
         </section>
 
         <section className="landing-section access-section">
           <div>
-            <p className="eyebrow">Access</p>
-            <h2>Start with a sample. Bring your own job when ready.</h2>
+            <p className="eyebrow">For your team</p>
+            <h2>Try the sample.<br />Then bring your next job.</h2>
             <p>
-              The sample works without an account. Hosted workspaces require an invitation and use separate company
-              records, private photos, and expiring report links.
+              Explore without an account. Request an invitation for a hosted company workspace.
             </p>
           </div>
           <RequestAccessForm />
@@ -311,19 +257,16 @@ function LandingPage() {
 
         <section id="faq" className="landing-section faq-section">
           <p className="eyebrow">FAQ</p>
-          <h2>Questions a sales manager will ask.</h2>
+          <h2>A few things to know.</h2>
           <div className="faq-grid">
-            <FaqItem title="Who is this for?" text="Residential roofing, solar, and roof+solar teams that need a consistent pre-appointment triage workflow." />
-            <FaqItem title="What setup is required?" text="The demo works without an account. Hosted pilots use Cognito invite-only sign-in and company-specific report storage." />
-            <FaqItem title="Is my data safe?" text="Hosted mode stores reports in DynamoDB and photos in a private S3 bucket with presigned links. Demo mode can still store reports locally in this browser." />
-            <FaqItem title="What does this replace?" text="It replaces loose pre-appointment notes, inconsistent rep judgment, and manual roof/solar sales-path checklists." />
-            <FaqItem title="What does it not do yet?" text="It does not process payments, push directly into a CRM, or make licensed inspection conclusions." />
-            <FaqItem title="How is this different from generic AI tools?" text="It is a specific workflow with constrained outputs, sales guidance, transparent scores, and homeowner-safe disclaimers." />
+            <FaqItem title="Who is it for?" text="Residential roofing, solar, and roof + solar teams preparing for homeowner appointments." />
+            <FaqItem title="Where does my data go?" text="Local reports stay in this browser. Signed-in hosted reports use company-specific AWS storage and private photo access. Shared report links expire." />
+            <FaqItem title="What are the limits?" text="This is pre-appointment triage, not a licensed inspection or final solar design. CRM export is a CSV, not a direct integration." />
           </div>
         </section>
       </main>
       <footer className="site-footer">
-        <a className="brand-lockup" href="/">Roof Signal</a>
+        <a className="brand-lockup" href="/" aria-label="Roof Signal home"><Brand /></a>
         <span>Pre-appointment roof + solar readiness</span>
         <a href="https://github.com/manynames3/roofsignal">Source & engineering documentation <ArrowRight size={14} /></a>
       </footer>
@@ -331,35 +274,40 @@ function LandingPage() {
   );
 }
 
-function PainItem({ title, text }: { title: string; text: string }) {
+function SampleReportPreview() {
+  const scenario = demoScenarios.find((item) => item.id === defaultDemoScenarioId);
+  if (!scenario) return null;
+  const report = analyzeRoofReadiness({
+    photos: scenario.photos,
+    details: scenario.details,
+    photoEvidence: scenario.photoEvidence,
+    solarOpportunity: estimateSolarOpportunity(scenario.details, scenario.solarAssumptions),
+    visionConfigured: false,
+    visionObservationUsed: false
+  });
+  const theme = statusTheme[report.recommendation.status];
+
   return (
-    <div className="pain-item">
-      <AlertTriangle size={20} />
-      <div>
-        <strong>{title}</strong>
-        <p>{text}</p>
+    <div className="sample-preview">
+      <figure className="sample-preview-photos">
+        {scenario.photos.slice(1, 2).map((photo) => (
+          <img key={photo.id} src={photo.previewUrl} alt={scenario.photoEvidence.find((item) => item.photoId === photo.id)?.caption || photo.fileName} loading="lazy" width="640" height="360" />
+        ))}
+        <figcaption>Sample roof evidence</figcaption>
+      </figure>
+      <div className="sample-preview-report">
+        <p className="sample-preview-label"><FileText size={16} />Sample report / fictional job details</p>
+        <span className={`status-badge ${theme.tone}`}>{theme.icon}{report.recommendation.label}</span>
+        <h3>{homeownerNextStep(report.recommendation.status)}</h3>
+        <dl className="sample-preview-scores">
+          <div><dt>Roof risk</dt><dd>{report.scores.totalRisk}<small>/100</small></dd></div>
+          <div><dt>Solar readiness</dt><dd>{report.scores.solarReadiness}<small>/100</small></dd></div>
+          <div><dt>Data complete</dt><dd>{report.scores.dataCompleteness}<small>/100</small></dd></div>
+        </dl>
+        <p className="sample-preview-note">Based on {scenario.photos.length} photos and provided job details. Final scope requires a qualified roof professional.</p>
+        <a className="text-link" href={`/app?demo=${scenario.id}#report`}>See the evidence behind the scores <ArrowRight size={17} /></a>
       </div>
     </div>
-  );
-}
-
-function SolutionCard({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
-  return (
-    <article className="landing-card">
-      <div className="section-icon">{icon}</div>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </article>
-  );
-}
-
-function BenefitCard({ title, text }: { title: string; text: string }) {
-  return (
-    <article className="benefit-card">
-      <CheckCircle2 size={20} />
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </article>
   );
 }
 
@@ -367,26 +315,6 @@ function StepCard({ number, title, text }: { number: string; title: string; text
   return (
     <article className="step-card">
       <span>{number}</span>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </article>
-  );
-}
-
-function UseCase({ title, text }: { title: string; text: string }) {
-  return (
-    <article className="usecase-card">
-      <CalendarCheck size={20} />
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </article>
-  );
-}
-
-function Objection({ title, text }: { title: string; text: string }) {
-  return (
-    <article className="objection-card">
-      <Route size={20} />
       <h3>{title}</h3>
       <p>{text}</p>
     </article>
@@ -407,13 +335,10 @@ function TrustItem({ icon, title, text }: { icon: ReactNode; title: string; text
 
 function FaqItem({ title, text }: { title: string; text: string }) {
   return (
-    <article className="faq-item">
-      <ClipboardCheck size={19} />
-      <div>
-        <h3>{title}</h3>
-        <p>{text}</p>
-      </div>
-    </article>
+    <details className="faq-item">
+      <summary>{title}<span aria-hidden="true">+</span></summary>
+      <p>{text}</p>
+    </details>
   );
 }
 
@@ -569,7 +494,7 @@ function ReadinessApp() {
         companyOverride: profile,
         generateReport: true,
         updateUrl: Boolean(demoId),
-        message: "Prefilled demo loaded with sample photos, job details, and a generated report."
+        message: "Sample report loaded."
       });
     }
   }, []);
@@ -1165,7 +1090,7 @@ function ReadinessApp() {
   if (sharedView) {
     return (
       <div className="app-shell shared-report">
-        <header className="topbar"><a className="brand-lockup" href="/">Roof Signal</a><span className="pill muted">Shared readiness report</span></header>
+        <header className="topbar"><a className="brand-lockup" href="/" aria-label="Roof Signal home"><Brand heading /></a><span className="pill muted">Shared readiness report</span></header>
         <main>
           {notice ? <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} /> : null}
           {activeReport ? <ReportSection savedReport={activeReport} onCopy={copySummary} onCopyLink={copyLocalLink} onExportCrm={exportCrmCsv} isExportingCrm={false} shareLabel="" hosted readOnly /> : <p role="status">{!awsConfigured ? "Shared reports are unavailable in this local workspace." : notice?.type === "error" ? "This report is unavailable or the link has expired." : "Loading shared report..."}</p>}
@@ -1179,12 +1104,7 @@ function ReadinessApp() {
       <a className="skip-link" href="#workspace-main">Skip to workspace</a>
       <header className="topbar">
         <a className="brand-lockup" href="/" aria-label="Roof Signal home">
-          <div className="brand-mark">
-            <Home size={22} />
-          </div>
-          <div>
-            <h1>Roof Signal</h1>
-          </div>
+          <Brand heading />
         </a>
         <div className="topbar-actions">
           <span className="pill muted">{cloudMode ? "Company workspace" : "Local workspace"}</span>
@@ -1208,7 +1128,7 @@ function ReadinessApp() {
 
       <main id="workspace-main">
         <div className="workspace-heading">
-          <div><p className="eyebrow">Roof + solar readiness</p><h2>{activeView === "report" ? "Readiness report" : activeView === "workflow" ? "Prepare a report" : "Your workspace"}</h2></div>
+          <div><p className="eyebrow">Roof + solar readiness</p><h2>{activeView === "report" ? "Report" : activeView === "workflow" ? "Job details" : "Workspace"}</h2></div>
           <button className="button secondary compact-button" type="button" onClick={startBlankReport}><ImagePlus size={17} />New report</button>
         </div>
         <nav className="workspace-navigation" aria-label="Workspace views">
@@ -2122,6 +2042,7 @@ function ReportSection({
 
         <p className="disclaimer">{report.disclaimer}</p>
         {company.licenseNote ? <p className="company-note">{company.licenseNote}</p> : null}
+        <div className="report-colophon"><span className="brand-lockup"><Brand /></span><span>Pre-appointment readiness</span></div>
       </article>
     </section>
   );
