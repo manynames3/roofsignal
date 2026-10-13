@@ -32,6 +32,7 @@ export interface AwsAuthSession {
 
 interface PresignResponse {
   uploadUrl: string;
+  uploadFields: Record<string, string>;
   storageKey: string;
   expiresIn: number;
 }
@@ -105,7 +106,7 @@ export function consumeAuthSessionFromUrl(): AwsAuthSession | null {
     idToken,
     email: String(idPayload.email ?? accessPayload.email ?? ""),
     companyId: String(idPayload["custom:companyId"] ?? accessPayload["custom:companyId"] ?? ""),
-    role: String(idPayload["custom:role"] ?? accessPayload["custom:role"] ?? "admin"),
+    role: String(idPayload["custom:role"] ?? accessPayload["custom:role"] ?? ""),
     expiresAt: Number(accessPayload.exp ?? idPayload.exp ?? 0)
   };
 
@@ -243,12 +244,18 @@ export async function attachAwsPhotoStorage(
       })
     });
 
+    // S3 presigned POST: the signed policy fixes the key, content type and 1 byte..12 MB size range.
+    // Policy fields must precede the file part, and no Content-Type header is set so the browser
+    // can add the multipart boundary itself.
+    const form = new FormData();
+    for (const [name, value] of Object.entries(presign.uploadFields)) {
+      form.append(name, value);
+    }
+    form.append("file", blob, photo.fileName);
+
     const uploadResponse = await fetch(presign.uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": blob.type || photo.type || "image/jpeg"
-      },
-      body: blob
+      method: "POST",
+      body: form
     });
 
     if (!uploadResponse.ok) {

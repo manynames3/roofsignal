@@ -206,4 +206,6 @@ export interface SavedReadinessReport {
   photoCount: number;
   photoNames: string[];
   auditTrail?: ReportAuditEvent[];
+  solarAssumptions?: SolarOpportunityAssumptions;
+  sample?: boolean;
 }

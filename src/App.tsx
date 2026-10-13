@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -16,9 +16,11 @@ import {
   ImagePlus,
   Info,
   Loader2,
+  Menu,
   LockKeyhole,
   MessageSquareWarning,
   Printer,
+  RotateCcw,
   Route,
   Save,
   Settings,
@@ -28,9 +30,11 @@ import {
   Sun,
   Trash2,
   UploadCloud,
+  X,
   Zap
 } from "lucide-react";
 import { demoScenarios, type DemoScenario } from "./demoData";
+import { csvCell } from "./lib/csv";
 import {
   attachAwsPhotoStorage,
   clearAwsAuthSession,
@@ -150,7 +154,7 @@ const guidedDemoCompanyProfile: CompanyProfile = {
   companyName: "Northstar Roof + Solar",
   repName: "Alex Morgan",
   phone: "(555) 014-2091",
-  email: "alex@northstarroofsolar.com",
+  email: "alex@example.com",
   licenseNote: "Pre-appointment triage only. Final scope requires qualified roof review."
 };
 
@@ -163,8 +167,10 @@ function App() {
 }
 
 function LandingPage() {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div className="landing-shell">
+      <a className="skip-link" href="#main">Skip to content</a>
       <header className="landing-topbar">
         <a className="brand-lockup" href="/" aria-label="Roof Signal home">
           <div className="brand-mark">
@@ -174,28 +180,32 @@ function LandingPage() {
             <strong>Roof Signal</strong>
           </div>
         </a>
-        <nav className="landing-nav" aria-label="Landing page navigation">
+        <button className="icon-button menu-toggle" type="button" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} aria-controls="landing-navigation" onClick={() => setMenuOpen(!menuOpen)}>
+          {menuOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+        <nav id="landing-navigation" className={`landing-nav ${menuOpen ? "is-open" : ""}`} aria-label="Landing page navigation" onClick={() => setMenuOpen(false)}>
           <a href="#problem">Problem</a>
           <a href="#how-it-works">How it works</a>
           <a href="#faq">FAQ</a>
           <a className="button secondary" href="/app">
-            Open live demo
+            Open sample report <ArrowRight size={16} />
           </a>
         </nav>
       </header>
 
-      <main className="landing-main">
+      <main id="main" className="landing-main">
         <section className="landing-hero">
           <div className="landing-hero-copy">
             <span className="eyebrow">For roof + solar sales teams</span>
-            <h1>Stop pitching solar before you know if the roof changes the sale.</h1>
+            <h1>Roof Signal</h1>
+            <h2>The roof comes first.</h2>
             <p>
-              Roof Signal helps reps turn roof photos and basic job details into a pre-appointment readiness report:
-              solar-first, roof tune-up first, replacement-first, or inspection-first.
+              Turn roof photos and job details into a clear starting point for the roof + solar conversation.
+              Review the evidence. Understand the risks. Arrive prepared.
             </p>
             <div className="hero-actions">
               <a className="button primary" href="/app">
-                Launch prefilled demo
+                Explore sample report
                 <ArrowRight size={18} />
               </a>
               <a className="button ghost" href="/app?blank=1#workflow">
@@ -204,24 +214,10 @@ function LandingPage() {
             </div>
             <div className="promise-strip">
               <CheckCircle2 size={18} />
-              <span>One clear sales path before the appointment, with transparent rule-based scoring and homeowner-safe language.</span>
+              <span>Pre-appointment triage. Qualified roof review still comes first.</span>
             </div>
           </div>
-          <div className="landing-product-card" aria-label="Product preview">
-            <div className="preview-header">
-              <span>Generated readiness report</span>
-              <strong>Roof replacement should be discussed before solar</strong>
-            </div>
-            <div className="preview-score-grid">
-              <PreviewScore label="Roof age risk" value="76" tone="risk" />
-              <PreviewScore label="Leak risk" value="88" tone="risk" />
-              <PreviewScore label="Lead quality" value="90" tone="positive" />
-            </div>
-            <div className="preview-guidance">
-              <span>Next best action</span>
-              <p>Schedule an in-person roof inspection and prepare a roof + solar bundle option.</p>
-            </div>
-          </div>
+          <span className="hero-photo-caption">Sample roof evidence / visible shingle wear</span>
         </section>
 
         <section id="problem" className="landing-section split-section">
@@ -247,7 +243,7 @@ function LandingPage() {
         </section>
 
         <section className="landing-section benefits-section">
-          <p className="eyebrow">Why teams use it</p>
+          <p className="eyebrow">Built for appointment preparation</p>
           <h2>Built around the sales decision that actually matters.</h2>
           <div className="benefit-grid">
             <BenefitCard title="Avoid bad sequencing" text="Do not sell a solar-first story when the roof should shape the project scope." />
@@ -304,10 +300,10 @@ function LandingPage() {
         <section className="landing-section access-section">
           <div>
             <p className="eyebrow">Access</p>
-            <h2>Use the builder now, or request a controlled hosted pilot.</h2>
+            <h2>Start with a sample. Bring your own job when ready.</h2>
             <p>
-              Billing is not live yet. Hosted pilots are invite-only so each company gets separated accounts,
-              private photo storage, saved reports, and expiring share links.
+              The sample works without an account. Hosted workspaces require an invitation and use separate company
+              records, private photos, and expiring report links.
             </p>
           </div>
           <RequestAccessForm />
@@ -326,18 +322,11 @@ function LandingPage() {
           </div>
         </section>
       </main>
-    </div>
-  );
-}
-
-function PreviewScore({ label, value, tone }: { label: string; value: string; tone: "risk" | "positive" }) {
-  return (
-    <div className="preview-score">
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <div className="score-track">
-        <span className={tone} style={{ width: `${value}%` }} />
-      </div>
+      <footer className="site-footer">
+        <a className="brand-lockup" href="/">Roof Signal</a>
+        <span>Pre-appointment roof + solar readiness</span>
+        <a href="https://github.com/manynames3/roofsignal">Source & engineering documentation <ArrowRight size={14} /></a>
+      </footer>
     </div>
   );
 }
@@ -451,7 +440,7 @@ function RequestAccessForm() {
     setIsSubmitting(true);
     try {
       await submitAccessRequest(input);
-      setStatus({ type: "success", message: "Request received. Create a Cognito invite for this company to start the hosted pilot." });
+      setStatus({ type: "success", message: "Request received. Hosted access requires an invitation." });
       setInput({ name: "", email: "", companyName: "", phone: "", notes: "" });
     } catch (error) {
       setStatus({ type: "error", message: error instanceof Error ? error.message : "Could not submit request." });
@@ -479,7 +468,7 @@ function RequestAccessForm() {
       </label>
       {status ? <NoticeBanner notice={status} onDismiss={() => setStatus(null)} /> : null}
       <div className="access-actions">
-        <button className="button primary" type="submit" disabled={isSubmitting}>
+        <button className="button primary" type="submit" disabled={isSubmitting || !awsReady}>
           {isSubmitting ? <Loader2 size={18} className="spin" /> : <ArrowRight size={18} />}
           Request hosted pilot
         </button>
@@ -487,11 +476,13 @@ function RequestAccessForm() {
           Launch demo
         </a>
       </div>
+      {!awsReady ? <p className="form-note">Hosted access requests are unavailable in this demo. The sample report is available now.</p> : null}
     </form>
   );
 }
 
 function ReadinessApp() {
+  const inputRevision = useRef(0);
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [photoEvidence, setPhotoEvidence] = useState<PhotoEvidence[]>([]);
   const [details, setDetails] = useState<PropertyDetails>(emptyPropertyDetails);
@@ -499,6 +490,9 @@ function ReadinessApp() {
   const [company, setCompany] = useState<CompanyProfile>(defaultCompanyProfile);
   const [savedReports, setSavedReports] = useState<SavedReadinessReport[]>([]);
   const [activeReport, setActiveReport] = useState<SavedReadinessReport | null>(null);
+  const [reportStale, setReportStale] = useState(false);
+  const [activeView, setActiveView] = useState<"workflow" | "report" | "workspace">("workflow");
+  const [sharedView] = useState(() => Boolean(new URLSearchParams(window.location.search).get("share")));
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [activeDemoScenarioId, setActiveDemoScenarioId] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string>("");
@@ -519,8 +513,8 @@ function ReadinessApp() {
     [photos, details, solarAssumptions, photoEvidence]
   );
   const dashboardReports = useMemo(
-    () => (isDemoMode && activeReport ? [activeReport, ...savedReports] : savedReports),
-    [activeReport, isDemoMode, savedReports]
+    () => savedReports.filter((report) => !report.sample && !report.id.startsWith("demo-")),
+    [savedReports]
   );
   const stats = useMemo(() => buildDashboardStats(dashboardReports), [dashboardReports]);
   const activeDemoScenario = useMemo(
@@ -543,8 +537,9 @@ function ReadinessApp() {
     setSavedReports(reports);
     setCompany(profile);
 
-    if (shareId && awsConfigured) {
-      void loadSharedCloudReport(shareId);
+    if (shareId) {
+      if (awsConfigured) void loadSharedCloudReport(shareId);
+      else setNotice({ type: "error", message: "Shared reports are unavailable in this local workspace." });
       return;
     }
 
@@ -562,10 +557,7 @@ function ReadinessApp() {
     }
 
     if (linkedReport) {
-      setActiveReport(linkedReport);
-      setDetails(linkedReport.details);
-      setPhotoEvidence(linkedReport.report.photoEvidence ?? []);
-      setLimitsAccepted(true);
+      hydrateLoadedReport(linkedReport);
       setIsDemoMode(false);
       setActiveDemoScenarioId(null);
       setNotice({ type: "success", message: "Loaded saved report from this browser." });
@@ -624,10 +616,33 @@ function ReadinessApp() {
   }
 
   function hydrateLoadedReport(saved: SavedReadinessReport) {
+    inputRevision.current += 1;
+    const evidence = saved.report.photoEvidence ?? [];
+    const solar = saved.report.solarOpportunity;
     setActiveReport(saved);
+    setReportStale(false);
+    setActiveView("report");
+    setIsDemoMode(false);
+    setActiveDemoScenarioId(null);
     setDetails(saved.details);
-    setPhotoEvidence(saved.report.photoEvidence ?? []);
-    setPhotos([]);
+    setPhotoEvidence(evidence);
+    setPhotos(evidence.map((item) => ({
+      id: item.photoId,
+      fileName: item.fileName,
+      previewUrl: item.previewUrl ?? "",
+      sizeBytes: 0,
+      type: "image/jpeg",
+      lastModified: 0
+    })));
+    setCompany(saved.company);
+    setSolarAssumptions(saved.solarAssumptions ?? (solar ? {
+      usableRoofAreaSqft: solar.usableRoofAreaSqft,
+      roofOrientation: solar.roofOrientation,
+      roofPitchDegrees: solar.roofPitchDegrees,
+      panelWattage: solar.panelCount && solar.estimatedDcWatts
+        ? solar.estimatedDcWatts / solar.panelCount : defaultSolarAssumptions.panelWattage,
+      shadeLevel: solar.shadeLevel
+    } : defaultSolarAssumptions));
     setLimitsAccepted(true);
   }
 
@@ -643,8 +658,7 @@ function ReadinessApp() {
 
   function updateDetails<K extends keyof PropertyDetails>(key: K, value: PropertyDetails[K]) {
     setDetails((current) => ({ ...current, [key]: value }));
-    setActiveReport(null);
-    clearReportUrl();
+    markReportStale();
   }
 
   function updateSolarAssumptions<K extends keyof SolarOpportunityAssumptions>(
@@ -652,8 +666,7 @@ function ReadinessApp() {
     value: SolarOpportunityAssumptions[K]
   ) {
     setSolarAssumptions((current) => ({ ...current, [key]: value }));
-    setActiveReport(null);
-    clearReportUrl();
+    markReportStale();
   }
 
   function updateCompany<K extends keyof CompanyProfile>(key: K, value: CompanyProfile[K]) {
@@ -662,6 +675,12 @@ function ReadinessApp() {
       saveCompanyProfile(next);
       return next;
     });
+    markReportStale();
+  }
+
+  function markReportStale() {
+    inputRevision.current += 1;
+    if (activeReport) setReportStale(true);
   }
 
   function addFiles(fileList: FileList | File[]) {
@@ -684,8 +703,7 @@ function ReadinessApp() {
         setPhotoEvidence((currentEvidence) => syncPhotoEvidenceForPhotos(nextPhotos, currentEvidence));
         return nextPhotos;
       });
-      setActiveReport(null);
-      clearReportUrl();
+      markReportStale();
     }
 
     setFileError(rejected.slice(0, 3).join(" "));
@@ -698,8 +716,7 @@ function ReadinessApp() {
       return current.filter((item) => item.id !== photoId);
     });
     setPhotoEvidence((current) => current.filter((item) => item.photoId !== photoId));
-    setActiveReport(null);
-    clearReportUrl();
+    markReportStale();
   }
 
   function updatePhotoEvidenceCaption(photoId: string, caption: string) {
@@ -711,8 +728,7 @@ function ReadinessApp() {
         return item.photoId === photoId ? { ...item, caption, source: "rep-entered" } : item;
       });
     });
-    setActiveReport(null);
-    clearReportUrl();
+    markReportStale();
   }
 
   function togglePhotoEvidenceObservation(photoId: string, flag: VisibleConditionFlag) {
@@ -742,8 +758,7 @@ function ReadinessApp() {
       setDetails((current) => addConditionFlagToDetails(current, flag));
     }
 
-    setActiveReport(null);
-    clearReportUrl();
+    markReportStale();
   }
 
   function acceptPhotoEvidenceSuggestion(photoId: string) {
@@ -757,8 +772,7 @@ function ReadinessApp() {
       .filter((flag) => flag !== "no-obvious-damage")
       .forEach((flag) => setDetails((current) => addConditionFlagToDetails(current, flag)));
 
-    setActiveReport(null);
-    clearReportUrl();
+    markReportStale();
   }
 
   function rejectPhotoEvidenceSuggestion(photoId: string) {
@@ -767,30 +781,35 @@ function ReadinessApp() {
         item.photoId === photoId
           ? {
               ...item,
+              caption: getDefaultPhotoCaption(item.fileName),
               observations: [],
               source: "rep-entered"
             }
           : item
       )
     );
-    setActiveReport(null);
-    clearReportUrl();
+    markReportStale();
   }
 
   async function suggestPhotoEvidenceWithGemini() {
+    if (isSuggestingPhotoEvidence) return;
     if (photos.length === 0) {
       setNotice({ type: "warning", message: "Upload roof photos before requesting Gemini suggestions." });
       return;
     }
 
     setIsSuggestingPhotoEvidence(true);
-    setActiveReport(null);
-    clearReportUrl();
+    const revision = inputRevision.current;
 
     try {
       const result = cloudMode && awsAuth
-        ? await requestAwsPhotoEvidenceSuggestions(awsAuth, photos)
-        : await requestGeminiPhotoEvidenceSuggestions(photos);
+        ? await requestAwsPhotoEvidenceSuggestions(awsAuth, photos.filter((photo) => photo.previewUrl))
+        : await requestGeminiPhotoEvidenceSuggestions(photos.filter((photo) => photo.previewUrl));
+
+      if (revision !== inputRevision.current) {
+        setNotice({ type: "warning", message: "Inputs changed while suggesting. Request suggestions again for the current photos." });
+        return;
+      }
 
       if (!result.configured) {
         setNotice({
@@ -806,6 +825,7 @@ function ReadinessApp() {
       }
 
       setPhotoEvidence((current) => mergeVisionSuggestions(photos, current, result.suggestions));
+      markReportStale();
       setNotice({
         type: "success",
         message: `Gemini suggested tags for ${result.suggestions.length} photo${result.suggestions.length === 1 ? "" : "s"}. Accept or edit before sharing.`
@@ -837,8 +857,7 @@ function ReadinessApp() {
 
       return { ...current, visibleConditionFlags: nextFlags };
     });
-    setActiveReport(null);
-    clearReportUrl();
+    markReportStale();
   }
 
   function applyDemoScenario(scenarioId: string) {
@@ -862,6 +881,7 @@ function ReadinessApp() {
       demoScenarios.find((item) => item.id === scenarioId) ??
       demoScenarios.find((item) => item.id === defaultDemoScenarioId);
     if (!scenario) return;
+    inputRevision.current += 1;
 
     photos.forEach((photo) => {
       if (photo.previewUrl.startsWith("blob:")) URL.revokeObjectURL(photo.previewUrl);
@@ -883,6 +903,8 @@ function ReadinessApp() {
     setSolarAssumptions(demoSolarAssumptions);
     setCompany(demoCompany);
     setActiveReport(null);
+    setReportStale(false);
+    setActiveView(options.generateReport ? "report" : "workflow");
     setIsDemoMode(true);
     setActiveDemoScenarioId(scenario.id);
     setLimitsAccepted(true);
@@ -898,7 +920,7 @@ function ReadinessApp() {
         visionObservationUsed: false
       });
       setActiveReport({
-        ...buildSavedReport(report, demoDetails, demoPhotos, demoCompany, { storageMode: "demo" }),
+        ...buildSavedReport(report, demoDetails, demoPhotos, demoCompany, { storageMode: "demo", solarAssumptions: demoSolarAssumptions }),
         id: `demo-${scenario.id}`,
         title: `${demoDetails.homeownerName} - ${demoDetails.propertyAddress}`
       });
@@ -914,6 +936,7 @@ function ReadinessApp() {
   }
 
   function startBlankReport() {
+    inputRevision.current += 1;
     photos.forEach((photo) => {
       if (photo.previewUrl.startsWith("blob:")) URL.revokeObjectURL(photo.previewUrl);
     });
@@ -922,25 +945,25 @@ function ReadinessApp() {
     setPhotoEvidence([]);
     setSolarAssumptions(defaultSolarAssumptions);
     setActiveReport(null);
+    setReportStale(false);
+    setActiveView("workflow");
     setIsDemoMode(false);
     setActiveDemoScenarioId(null);
     setLimitsAccepted(false);
     setFileError("");
     setNotice({ type: "success", message: "Blank report workflow ready." });
     clearAppUrl();
-    requestAnimationFrame(() => document.getElementById("workflow")?.scrollIntoView({ behavior: "smooth" }));
-  }
-
-  function jumpToReport() {
-    document.getElementById(activeReport ? "report" : "workflow")?.scrollIntoView({ behavior: "smooth" });
+    requestAnimationFrame(() => scrollToSection("workflow"));
   }
 
   function jumpToWorkflow() {
-    document.getElementById("workflow")?.scrollIntoView({ behavior: "smooth" });
+    setActiveView("workflow");
+    requestAnimationFrame(() => scrollToSection("workflow"));
   }
 
   async function handleAnalyze(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isAnalyzing) return;
 
     if (!limitsAccepted) {
       setNotice({ type: "error", message: "Confirm the pre-appointment limitation before generating a report." });
@@ -948,6 +971,13 @@ function ReadinessApp() {
     }
 
     setIsAnalyzing(true);
+    const revision = inputRevision.current;
+
+    function inputsChanged() {
+      if (revision === inputRevision.current) return false;
+      setNotice({ type: "warning", message: "Job details changed while generating. Generate again with the current inputs." });
+      return true;
+    }
 
     try {
       const evidenceForPhotos = syncPhotoEvidenceForPhotos(photos, photoEvidence);
@@ -956,9 +986,11 @@ function ReadinessApp() {
       const solarOpportunity = cloudMode && awsAuth
         ? await requestAwsSolarEstimate(awsAuth, detailsForReport, solarAssumptions)
         : await analyzeSolarOpportunity(detailsForReport, solarAssumptions);
+      if (inputsChanged()) return;
       const storedEvidence = cloudMode && awsAuth
         ? await attachAwsPhotoStorage(awsAuth, photos, reportableEvidence)
         : reportableEvidence;
+      if (inputsChanged()) return;
       const report = analyzeRoofReadiness({
         photos,
         details: detailsForReport,
@@ -968,13 +1000,21 @@ function ReadinessApp() {
         visionObservationUsed: false
       });
       const saved = buildSavedReport(report, detailsForReport, photos, company, {
-        storageMode: cloudMode && awsAuth ? "hosted" : "local"
+        storageMode: cloudMode && awsAuth ? "hosted" : "local",
+        solarAssumptions,
+        sample: isDemoMode || activeReport?.sample
       });
       const persisted = cloudMode && awsAuth ? await createAwsReport(awsAuth, stripSessionPhotoUrls(saved)) : saved;
       const nextReports = cloudMode && awsAuth ? await listAwsReports(awsAuth) : saveReport(stripSessionPhotoUrls(saved));
 
       setSavedReports(nextReports);
+      if (revision !== inputRevision.current) {
+        setNotice({ type: "warning", message: "The earlier report was saved to history. Generate again with the current job details." });
+        return;
+      }
       setActiveReport(cloudMode && awsAuth ? persisted : saved);
+      setReportStale(false);
+      setActiveView("report");
       setDetails(detailsForReport);
       setPhotoEvidence(syncPhotoEvidenceForPhotos(photos, storedEvidence));
       setIsDemoMode(false);
@@ -987,7 +1027,7 @@ function ReadinessApp() {
             : `Report generated with local solar opportunity estimate and saved ${cloudMode ? "to AWS" : "locally"}.`
       });
       setReportUrl((cloudMode && awsAuth ? persisted : saved).id);
-      requestAnimationFrame(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }));
+      requestAnimationFrame(() => scrollToSection("report"));
     } catch (error) {
       setNotice({
         type: "error",
@@ -1015,7 +1055,7 @@ function ReadinessApp() {
         ? "Hosted report loaded with private photo links."
         : "Saved report loaded. Uploaded image bytes are not stored; photo evidence keeps file names, captions, and tags."
     });
-    requestAnimationFrame(() => document.getElementById("report")?.scrollIntoView({ behavior: "smooth" }));
+    requestAnimationFrame(() => scrollToSection("report"));
   }
 
   async function getAwsReportSafe(session: AwsAuthSession, reportId: string) {
@@ -1043,7 +1083,9 @@ function ReadinessApp() {
     setSavedReports(nextReports);
 
     if (activeReport?.id === reportId) {
+      inputRevision.current += 1;
       setActiveReport(null);
+      setReportStale(false);
       clearReportUrl();
     }
 
@@ -1120,24 +1162,32 @@ function ReadinessApp() {
     }
   }
 
-  const workflowSteps = isDemoMode
-    ? ["Review demo inputs", "Show recommendation", "Explain scores", "Print or share"]
-    : ["Upload photos", "Add job details", "Confirm limits", "Generate report"];
+  if (sharedView) {
+    return (
+      <div className="app-shell shared-report">
+        <header className="topbar"><a className="brand-lockup" href="/">Roof Signal</a><span className="pill muted">Shared readiness report</span></header>
+        <main>
+          {notice ? <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} /> : null}
+          {activeReport ? <ReportSection savedReport={activeReport} onCopy={copySummary} onCopyLink={copyLocalLink} onExportCrm={exportCrmCsv} isExportingCrm={false} shareLabel="" hosted readOnly /> : <p role="status">{!awsConfigured ? "Shared reports are unavailable in this local workspace." : notice?.type === "error" ? "This report is unavailable or the link has expired." : "Loading shared report..."}</p>}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#workspace-main">Skip to workspace</a>
       <header className="topbar">
-        <div className="brand-lockup">
+        <a className="brand-lockup" href="/" aria-label="Roof Signal home">
           <div className="brand-mark">
             <Home size={22} />
           </div>
           <div>
             <h1>Roof Signal</h1>
           </div>
-        </div>
+        </a>
         <div className="topbar-actions">
-          <span className="pill muted">{cloudMode ? "AWS hosted mode" : awsConfigured ? "AWS ready - sign in" : "Client-side pilot MVP"}</span>
-          <span className="pill success">Rule-based triage active</span>
+          <span className="pill muted">{cloudMode ? "Company workspace" : "Local workspace"}</span>
           {awsConfigured ? (
             awsAuth ? (
               <>
@@ -1156,59 +1206,34 @@ function ReadinessApp() {
         </div>
       </header>
 
-      <main>
-        <section className="hero-grid">
-          <div className="hero-copy">
-            <span className="eyebrow">Pre-appointment triage for roof + solar teams</span>
-            <h2>Know the right sales path before the appointment.</h2>
-            <p>
-              Generate a branded, homeowner-friendly readiness report that helps reps decide whether to lead with
-              solar, roof tune-up, roof replacement, or an in-person inspection.
-            </p>
-            <div className="hero-actions">
-              <button
-                className="button primary"
-                type="button"
-                onClick={isDemoMode ? jumpToReport : () => applyDemoScenario(defaultDemoScenarioId)}
-              >
-                <Sparkles size={18} />
-                {isDemoMode ? "Show demo report" : "Load guided demo"}
-              </button>
-              <button className="button ghost" type="button" onClick={startBlankReport}>
-                <UploadCloud size={18} />
-                Start blank report
-              </button>
-            </div>
-          </div>
-          <div className="kpi-panel" aria-label="Dashboard summary">
-            <MetricCard icon={<FileDown size={20} />} label="Reports generated this month" value={String(stats.reportsThisMonth)} />
-            <MetricCard icon={<BriefcaseBusiness size={20} />} label="Bundle opportunities flagged" value={String(stats.bundleOpportunities)} />
-            <MetricCard icon={<BarChart3 size={20} />} label="Average lead quality" value={stats.averageLeadQuality ? String(stats.averageLeadQuality) : "-"} />
-          </div>
-        </section>
+      <main id="workspace-main">
+        <div className="workspace-heading">
+          <div><p className="eyebrow">Roof + solar readiness</p><h2>{activeView === "report" ? "Readiness report" : activeView === "workflow" ? "Prepare a report" : "Your workspace"}</h2></div>
+          <button className="button secondary compact-button" type="button" onClick={startBlankReport}><ImagePlus size={17} />New report</button>
+        </div>
+        <nav className="workspace-navigation" aria-label="Workspace views">
+          <button type="button" aria-pressed={activeView === "report"} onClick={() => setActiveView("report")}><FileText size={17} />Report{reportStale ? <span className="change-dot" aria-label="Inputs changed" /> : null}</button>
+          <button type="button" aria-pressed={activeView === "workflow"} onClick={() => setActiveView("workflow")}><ClipboardCheck size={17} />Job details</button>
+          <button type="button" aria-pressed={activeView === "workspace"} onClick={() => setActiveView("workspace")}><FolderOpen size={17} />Workspace</button>
+        </nav>
 
-        {isDemoMode && activeDemoScenario ? (
+        {isDemoMode && activeDemoScenario && activeView === "report" ? (
           <DemoModePanel
             scenario={activeDemoScenario}
-            reportReady={Boolean(activeReport)}
-            onJumpReport={jumpToReport}
             onJumpWorkflow={jumpToWorkflow}
+            onApply={applyDemoScenario}
             onReload={() => applyDemoScenario(activeDemoScenario.id)}
-            onStartBlank={startBlankReport}
           />
         ) : null}
 
-        <section className="progress-strip" aria-label="Workflow steps">
-          {workflowSteps.map((step, index) => (
-            <div className="progress-step" key={step}>
-              <span>{index + 1}</span>
-              {step}
-            </div>
-          ))}
-        </section>
-
         {notice ? <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} /> : null}
 
+        <div hidden={activeView !== "workspace"}>
+        <div className="kpi-panel workspace-metrics" aria-label="Saved report summary">
+          <MetricCard icon={<FileDown size={20} />} label="Saved reports this month" value={String(stats.reportsThisMonth)} />
+          <MetricCard icon={<BriefcaseBusiness size={20} />} label="Bundle opportunities in saved reports" value={String(stats.bundleOpportunities)} />
+          <MetricCard icon={<BarChart3 size={20} />} label="Average saved lead quality" value={stats.averageLeadQuality ? String(stats.averageLeadQuality) : "-"} />
+        </div>
         <section className="ops-grid">
           <CompanySettings company={company} onChange={updateCompany} />
           <HostedControlsPanel awsConfigured={awsConfigured} cloudMode={cloudMode} auth={awsAuth} />
@@ -1222,7 +1247,9 @@ function ReadinessApp() {
             onDelete={removeSavedReport}
           />
         </section>
+        </div>
 
+        <div hidden={activeView !== "workflow"}>
         <form id="workflow" className="workflow-grid" onSubmit={handleAnalyze}>
           <section className="panel upload-panel">
             <SectionHeader
@@ -1262,7 +1289,7 @@ function ReadinessApp() {
                 label="Property address"
                 value={details.propertyAddress}
                 onChange={(value) => updateDetails("propertyAddress", value)}
-                placeholder="742 Oak Ridge Dr"
+                placeholder="Street, city, state, ZIP (U.S. address matching)"
               />
               <NumberField
                 label="Roof age estimate"
@@ -1371,7 +1398,10 @@ function ReadinessApp() {
             </div>
           </section>
         </form>
+        </div>
 
+        <div hidden={activeView !== "report"}>
+        {reportStale ? <div className="stale-report" role="status"><AlertTriangle size={18} /><span>Inputs changed. This is the last saved report.</span><button className="button secondary compact-button" type="button" onClick={jumpToWorkflow}>Review & regenerate<ArrowRight size={16} /></button></div> : null}
         {activeReport ? (
           <ReportSection
             savedReport={activeReport}
@@ -1381,10 +1411,12 @@ function ReadinessApp() {
             isExportingCrm={isExportingCrm}
             shareLabel={cloudMode ? "Copy hosted link" : "Copy local link"}
             hosted={cloudMode}
+            stale={reportStale}
           />
         ) : (
           <ReportPlaceholder visionConfigured={visionConfigured} />
         )}
+        </div>
       </main>
     </div>
   );
@@ -1404,10 +1436,10 @@ function MetricCard({ icon, label, value }: { icon: ReactNode; label: string; va
 
 function NoticeBanner({ notice, onDismiss }: { notice: NonNullable<Notice>; onDismiss: () => void }) {
   return (
-    <div className={`notice ${notice.type}`}>
+    <div className={`notice ${notice.type}`} role={notice.type === "error" ? "alert" : "status"}>
       <span>{notice.message}</span>
       <button type="button" onClick={onDismiss} aria-label="Dismiss message">
-        x
+        <X size={16} />
       </button>
     </div>
   );
@@ -1415,28 +1447,20 @@ function NoticeBanner({ notice, onDismiss }: { notice: NonNullable<Notice>; onDi
 
 function DemoModePanel({
   scenario,
-  reportReady,
-  onJumpReport,
   onJumpWorkflow,
+  onApply,
   onReload,
-  onStartBlank
 }: {
   scenario: DemoScenario;
-  reportReady: boolean;
-  onJumpReport: () => void;
   onJumpWorkflow: () => void;
+  onApply: (scenarioId: string) => void;
   onReload: () => void;
-  onStartBlank: () => void;
 }) {
   return (
     <section className="demo-mode-panel" aria-label="Guided demo status">
       <div className="demo-mode-copy">
-        <span className="eyebrow">Guided demo ready</span>
-        <h2>{scenario.label}: {scenario.details.homeownerName}</h2>
-        <p>
-          The sample is already prefilled with {scenario.photos.length} roof photos, job details, roof condition inputs,
-          the pre-appointment limitation acknowledgement, and a generated readiness report.
-        </p>
+        <span className="eyebrow">Sample case / fictional details</span>
+        <h2>{scenario.label}</h2>
         <div className="demo-facts" aria-label="Demo facts">
           <span>{scenario.details.roofAgeYears ?? "Unknown"} year roof</span>
           <span>{roofMaterialLabels[scenario.details.roofMaterial]}</span>
@@ -1445,21 +1469,13 @@ function DemoModePanel({
         </div>
       </div>
       <div className="demo-mode-actions">
-        <button className="button primary" type="button" onClick={onJumpReport}>
-          <FileDown size={17} />
-          {reportReady ? "View generated report" : "View workflow"}
-        </button>
+        <label className="field sample-case-field"><span>Sample case</span><select value={scenario.id} onChange={(event) => onApply(event.target.value)}>{demoScenarios.map((sample) => <option key={sample.id} value={sample.id}>{sample.label}</option>)}</select></label>
         <button className="button secondary" type="button" onClick={onJumpWorkflow}>
           <ClipboardCheck size={17} />
           Review inputs
         </button>
-        <button className="button secondary" type="button" onClick={onReload}>
-          <Sparkles size={17} />
-          Reset demo
-        </button>
-        <button className="button ghost" type="button" onClick={onStartBlank}>
-          <ImagePlus size={17} />
-          Start blank
+        <button className="icon-button" type="button" onClick={onReload} title="Reset sample" aria-label="Reset sample">
+          <RotateCcw size={17} />
         </button>
       </div>
     </section>
@@ -1515,26 +1531,26 @@ function HostedControlsPanel({
 
   return (
     <section className="panel mini-panel">
-      <SectionHeader icon={<ShieldCheck size={20} />} title="Admin controls" subtitle="Visible trust controls for team pilots." />
+      <SectionHeader icon={<ShieldCheck size={20} />} title="Hosted workspace" subtitle="Optional hosted storage and access." />
       <div className="control-status">
         <strong>{modeLabel}</strong>
-        <span>{cloudMode ? `Company scope: ${auth?.companyId || "Cognito company"}` : "Sign in to use company-separated hosted reports."}</span>
+        <span>{cloudMode ? `Company scope: ${auth?.companyId || "Unassigned"}` : awsConfigured ? "Sign in to use company-separated hosted reports." : "Reports stay in this browser. Hosted storage is not configured."}</span>
       </div>
       <div className="control-list">
         <div>
           <span>Team roles</span>
-          <strong>{cloudMode ? `${auth?.role || "admin"} role active` : "Invite-only Cognito users"}</strong>
-          <p>Company/team separation uses Cognito custom company IDs. Admin and rep role UI is the next management layer.</p>
+          <strong>{cloudMode ? `${auth?.role || "Unassigned"} role active` : "Invite-only accounts"}</strong>
+          <p>Company access is assigned by an administrator. Hosted changes are restricted to report owners and admins.</p>
         </div>
         <div>
           <span>Retention</span>
-          <strong>90-day reports/photos</strong>
-          <p>Hosted reports expire in DynamoDB, photos expire in private S3, and report links expire after 30 days.</p>
+          <strong>Default: 90-day reports/photos</strong>
+          <p>Hosted retention is configurable. Share links default to 30 days; storage cleanup is asynchronous.</p>
         </div>
         <div>
-          <span>Audit trail</span>
-          <strong>Per-report events</strong>
-          <p>Generated reports now show source, scoring, solar, storage, and export-ready audit context.</p>
+          <span>Report context</span>
+          <strong>Browser-authored provenance</strong>
+          <p>Report context records inputs and scoring. It can be edited and is not an immutable audit log.</p>
         </div>
       </div>
     </section>
@@ -1667,7 +1683,7 @@ function PhotoEvidenceEditor({
           <strong>Photo evidence analysis</strong>
           <span>Photos become report evidence when a rep confirms tags. Accepted tags directly update visible-condition risk, leak risk, urgency, and confidence.</span>
         </div>
-        <button className="button secondary compact-button" type="button" onClick={onSuggestWithGemini} disabled={isSuggesting}>
+        <button className="button secondary compact-button" type="button" onClick={onSuggestWithGemini} disabled={isSuggesting || !photos.some((photo) => photo.previewUrl)}>
           {isSuggesting ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
           {isSuggesting ? "Suggesting..." : "Suggest tags with Gemini"}
         </button>
@@ -1685,7 +1701,7 @@ function PhotoEvidenceEditor({
         return (
           <article className={`photo-evidence-card ${isVisionSuggested ? "vision-suggested" : ""}`} key={photo.id}>
             <div className="photo-card-image">
-              <img src={photo.previewUrl} alt={`Uploaded roof photo ${photo.fileName}`} />
+              {photo.previewUrl ? <img src={photo.previewUrl} alt={`Uploaded roof photo ${photo.fileName}`} /> : <div className="missing-photo"><ImagePlus size={24} /><span>Image not stored locally. Reattach to review.</span></div>}
               <button type="button" aria-label={`Remove ${photo.fileName}`} onClick={() => onRemove(photo.id)}>
                 <Trash2 size={16} />
               </button>
@@ -1868,6 +1884,7 @@ function SegmentedStatus({
             key={option}
             type="button"
             aria-label={`${label}: ${option}`}
+            aria-pressed={value === option}
             onClick={() => onChange(option)}
           >
             {option}
@@ -1987,7 +2004,9 @@ function ReportSection({
   onExportCrm,
   isExportingCrm,
   shareLabel,
-  hosted
+  hosted,
+  readOnly = false,
+  stale = false
 }: {
   savedReport: SavedReadinessReport;
   onCopy: () => void;
@@ -1996,6 +2015,8 @@ function ReportSection({
   isExportingCrm: boolean;
   shareLabel: string;
   hosted: boolean;
+  readOnly?: boolean;
+  stale?: boolean;
 }) {
   const { report, details, company } = savedReport;
   const theme = statusTheme[report.recommendation.status];
@@ -2008,19 +2029,21 @@ function ReportSection({
           <h2>{details.homeownerName || "Homeowner"} - {details.propertyAddress || "Address pending"}</h2>
         </div>
         <div className="toolbar-actions">
-          <button className="button secondary" type="button" onClick={onCopy}>
+          {!readOnly ? <>
+          <button className="button secondary" type="button" onClick={onCopy} disabled={stale}>
             <Clipboard size={17} />
             Copy summary
           </button>
-          <button className="button secondary" type="button" onClick={onCopyLink}>
+          <button className="button secondary" type="button" onClick={onCopyLink} disabled={stale}>
             <Share2 size={17} />
             {shareLabel}
           </button>
-          <button className="button secondary" type="button" onClick={onExportCrm} disabled={isExportingCrm}>
+          <button className="button secondary" type="button" onClick={onExportCrm} disabled={isExportingCrm || stale}>
             {isExportingCrm ? <Loader2 size={17} className="spin" /> : <FileDown size={17} />}
             CRM CSV
           </button>
-          <button className="button secondary" type="button" onClick={() => window.print()}>
+          </> : null}
+          <button className="button secondary" type="button" onClick={() => window.print()} disabled={stale}>
             <Printer size={17} />
             Print report
           </button>
@@ -2028,6 +2051,7 @@ function ReportSection({
       </div>
 
       <article className="report-card">
+        {savedReport.sample || savedReport.id.startsWith("demo-") ? <p className="sample-label">Sample report / fictional homeowner and company details</p> : null}
         <header className="report-brand">
           <div>
             <span>{company.companyName || "Company name pending"}</span>
@@ -2046,8 +2070,8 @@ function ReportSection({
               {theme.icon}
               {report.recommendation.label}
             </span>
-            <h3>{report.recommendation.recommendedSalesPath}</h3>
-            <p>{report.suggestedTalkTrack}</p>
+            <h3>{homeownerNextStep(report.recommendation.status)}</h3>
+            <p>Based on provided job details and confirmed observations. Final scope requires a qualified roof professional.</p>
           </div>
           <div className="confidence-card">
             <span>Confidence</span>
@@ -2062,7 +2086,7 @@ function ReportSection({
           <span>Generated {formatDate(savedReport.createdAt)}</span>
         </div>
 
-        <ScoreBoard scores={report.scores} leadQualityScore={report.leadQualityScore} />
+        <ScoreBoard scores={report.scores} />
 
         <AnalysisTraceReport report={report} />
 
@@ -2077,17 +2101,22 @@ function ReportSection({
 
         <PhotoEvidenceReport evidence={report.photoEvidence ?? []} analysis={report.photoAnalysis ?? []} />
 
-        <AuditTrailReport events={savedReport.auditTrail ?? []} hosted={hosted} />
+        {!readOnly ? <details className="rep-briefing internal-only">
+          <summary><BriefcaseBusiness size={18} />Rep briefing <span>Internal / excluded from print and shared reports</span></summary>
+          <div className="rep-briefing-content">
+            <h3>{report.recommendation.recommendedSalesPath}</h3>
+            <p>{report.suggestedTalkTrack}</p>
+            <p><strong>Next sales action:</strong> {report.recommendation.nextBestAction}</p>
+            <p><strong>Lead quality:</strong> {report.leadQualityScore}/100</p>
+            {details.repNotes ? <p><strong>Rep notes:</strong> {details.repNotes}</p> : null}
+            <AuditTrailReport events={savedReport.auditTrail ?? []} hosted={hosted} />
+          </div>
+        </details> : null}
 
         <section className="next-action">
           <div>
-            <p className="eyebrow">Next Best Action</p>
-            <h3>{report.recommendation.nextBestAction}</h3>
-          </div>
-          <div className="placeholder-stack" aria-label="Product readiness status">
-            <span>Branding active</span>
-            <span>{hosted ? "Hosted history active" : "Demo/local history active"}</span>
-            <span>{hosted ? "Expiring share links active" : "Hosted sharing after sign-in"}</span>
+            <p className="eyebrow">Next step</p>
+            <h3>{homeownerNextStep(report.recommendation.status)}</h3>
           </div>
         </section>
 
@@ -2273,14 +2302,14 @@ function SolarKpi({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ScoreBoard({ scores, leadQualityScore }: { scores: RoofRiskScores; leadQualityScore: number }) {
+function ScoreBoard({ scores }: { scores: RoofRiskScores }) {
   const scoreItems = [
     { label: "Roof age risk", value: scores.roofAgeRisk, polarity: "risk" },
     { label: "Visible condition risk", value: scores.visibleConditionRisk, polarity: "risk" },
     { label: "Leak risk", value: scores.leakRisk, polarity: "risk" },
     { label: "Solar readiness", value: scores.solarReadiness, polarity: "positive" },
     { label: "Urgency", value: scores.urgency, polarity: "risk" },
-    { label: "Lead quality", value: leadQualityScore, polarity: "positive" }
+    { label: "Data completeness", value: scores.dataCompleteness, polarity: "positive" }
   ];
 
   return (
@@ -2508,7 +2537,7 @@ function buildSavedReport(
   details: PropertyDetails,
   photos: UploadedPhoto[],
   company: CompanyProfile,
-  options: { storageMode?: "demo" | "local" | "hosted" } = {}
+  options: { storageMode?: "demo" | "local" | "hosted"; solarAssumptions?: SolarOpportunityAssumptions; sample?: boolean } = {}
 ): SavedReadinessReport {
   const createdAt = report.generatedAt;
   const storageMode = options.storageMode ?? "local";
@@ -2520,6 +2549,8 @@ function buildSavedReport(
     details,
     report,
     company,
+    solarAssumptions: options.solarAssumptions ? { ...options.solarAssumptions } : undefined,
+    sample: storageMode === "demo" || Boolean(options.sample),
     photoCount: photos.length,
     photoNames: photos.map((photo) => photo.fileName),
     auditTrail: buildReportAuditTrail(report, details, company, storageMode)
@@ -2612,9 +2643,7 @@ function buildClipboardSummary(report: ReadinessReport, details: PropertyDetails
     `Property: ${details.propertyAddress || "Pending"}`,
     `Status: ${formatRecommendationStatus(report.recommendation.status)}`,
     `Confidence: ${report.recommendation.confidence}`,
-    `Sales path: ${report.recommendation.recommendedSalesPath}`,
-    `Next action: ${report.recommendation.nextBestAction}`,
-    `Talk track: ${report.suggestedTalkTrack}`,
+    `Next step: ${homeownerNextStep(report.recommendation.status)}`,
     ...solarOpportunityLines,
     ...photoEvidenceLines,
     `Disclaimer: ${report.disclaimer}`
@@ -2657,8 +2686,19 @@ function buildCrmCsv(savedReport: SavedReadinessReport): string {
   ].join("\n");
 }
 
-function csvCell(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
+function homeownerNextStep(status: RecommendationStatus): string {
+  return status === "solar-ready"
+    ? "Confirm roof condition and site measurements before solar design."
+    : status === "repair-first"
+    ? "Review roof repairs with a qualified professional before solar."
+    : status === "replacement-first"
+    ? "Review roof replacement timing before planning solar."
+    : "Arrange an in-person roof review before choosing a project scope.";
+}
+
+function scrollToSection(id: string) {
+  const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  document.getElementById(id)?.scrollIntoView({ behavior, block: "start" });
 }
 
 function createId(): string {

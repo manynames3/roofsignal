@@ -32,6 +32,16 @@ NREL_DAILY_LIMIT = int(os.environ.get("NREL_DAILY_LIMIT", "300"))
 ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 MAX_PHOTO_BYTES = 12 * 1024 * 1024
 MAX_GEMINI_PHOTOS = 8
+# DynamoDB items are capped at 400 KB; keep headroom for the other attributes and key names.
+MAX_REPORT_PAYLOAD_BYTES = 300 * 1024
+PRESIGN_TTL_SECONDS = 900
+VALID_ROLES = {"admin", "rep"}
+# \Z, not $: "$" also matches before a trailing newline.
+COMPANY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}\Z")
+REPORT_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,120}\Z")
+STORAGE_SUFFIX_PATTERN = re.compile(r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*\Z")
+DEMO_PREVIEW_PATTERN = re.compile(r"^/demo-roof-photos/[A-Za-z0-9._-]{1,120}\Z")
+CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
 PANEL_AREA_SQFT = 21.5
 LOCAL_KWH_PER_KW_YEAR = 1250
 MONTHLY_SHAPE = [0.065, 0.073, 0.087, 0.095, 0.102, 0.104, 0.104, 0.096, 0.087, 0.076, 0.059, 0.052]
@@ -80,10 +90,31 @@ ssm = boto3.client("ssm")
 _secret_cache = {}
 
 
-def handler(event, _context):
+class ApiError(Exception):
+    status = 400
+
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        if status is not None:
+            self.status = status
+
+
+class RateLimitExceeded(ApiError):
+    status = 429
+
+
+def handler(event, context):
+    started = time.monotonic()
     method = event.get("requestContext", {}).get("http", {}).get("method", "")
     path = event.get("rawPath", "")
+    request_id = event.get("requestContext", {}).get("requestId") or getattr(context, "aws_request_id", "")
 
+    response = dispatch(event, method, path, request_id)
+    log_request(request_id, method, path, response["statusCode"], started)
+    return response
+
+
+def dispatch(event, method, path, request_id):
     if method == "OPTIONS":
         return respond({}, 204, event)
 
@@ -125,13 +156,51 @@ def handler(event, _context):
             return create_crm_export(event, user, export_match.group(1))
 
         return respond({"error": "Route not found."}, 404, event)
-    except RateLimitExceeded as error:
-        return respond({"error": str(error)}, 429, event)
+    except ApiError as error:
+        return respond({"error": str(error)}, error.status, event)
     except ValueError as error:
         return respond({"error": str(error)}, 400, event)
     except Exception as error:
-        print(f"Unhandled error: {error}")
+        # Log the exception type only: messages can echo claims, addresses or provider bodies.
+        log_event("error", "unhandled_error", requestId=request_id, errorType=type(error).__name__, awsCode=aws_error_code(error))
         return respond({"error": "Server error."}, 500, event)
+
+
+def log_request(request_id, method, path, status, started):
+    log_event(
+        "info",
+        "request",
+        requestId=request_id,
+        method=method,
+        path=route_label(path),
+        status=status,
+        durationMs=int((time.monotonic() - started) * 1000),
+    )
+
+
+def log_event(level, event_name, **fields):
+    print(json.dumps({"level": level, "event": event_name, **fields}, separators=(",", ":"), default=str))
+
+
+def aws_error_code(error):
+    if isinstance(error, ClientError):
+        return error.response.get("Error", {}).get("Code", "")
+    return ""
+
+
+STATIC_ROUTES = {"/health", "/request-access", "/reports", "/photos/presign", "/photo-evidence-suggestions", "/solar-estimate"}
+
+
+def route_label(path):
+    """Route template for logs so report and share IDs never reach CloudWatch."""
+    if path in STATIC_ROUTES:
+        return path
+    if re.match(r"^/share/[^/]+$", path):
+        return "/share/{shareId}"
+    match = re.match(r"^/reports/[^/]+(/share|/crm-export)?$", path)
+    if match:
+        return "/reports/{reportId}" + (match.group(1) or "")
+    return "unmatched"
 
 
 def create_access_request(event):
@@ -164,7 +233,11 @@ def list_reports(event, user):
         ScanIndexForward=False,
         Limit=50,
     )
-    reports = [public_report_from_item(item) for item in response.get("Items", [])]
+    reports = [
+        public_report_from_item(item, user["companyId"])
+        for item in response.get("Items", [])
+        if not report_expired(item)
+    ]
     return respond({"reports": reports}, 200, event)
 
 
@@ -174,48 +247,96 @@ def create_report(event, user):
     if not isinstance(saved_report, dict):
         raise ValueError("savedReport is required.")
 
-    report_id = safe_id(saved_report.get("id")) or f"report-{uuid.uuid4()}"
+    requested_id = saved_report.get("id")
+    if requested_id in (None, ""):
+        report_id = f"report-{uuid.uuid4()}"
+    elif isinstance(requested_id, str) and REPORT_ID_PATTERN.match(requested_id):
+        report_id = requested_id
+    else:
+        raise ValueError("Report id is not valid.")
+
+    company_id = user["companyId"]
     created_at = str(saved_report.get("createdAt") or now_iso())
     saved_report["id"] = report_id
     saved_report["createdAt"] = created_at
+    sanitize_saved_report(saved_report, company_id)
+
+    serialized = json.dumps(saved_report, separators=(",", ":"))
+    if len(serialized.encode("utf-8")) > MAX_REPORT_PAYLOAD_BYTES:
+        raise ApiError("Report is too large to save.", 413)
+
+    # An existing ID can only be overwritten by its owner or an admin, and the original owner is kept.
+    existing = get_report_item(company_id, report_id)
+    if existing:
+        previous_owner = existing.get("ownerUserId", "")
+        require_report_manager(user, previous_owner)
+        live = not report_expired(existing)
+        owner_user_id = previous_owner if live else user["userId"]
+        owner_email = existing.get("ownerEmail", "") if live else user.get("email", "")
+        condition = {
+            "ConditionExpression": "attribute_exists(reportId) AND ownerUserId = :previousOwner",
+            "ExpressionAttributeValues": {":previousOwner": previous_owner},
+        }
+    else:
+        owner_user_id = user["userId"]
+        owner_email = user.get("email", "")
+        condition = {"ConditionExpression": "attribute_not_exists(reportId)"}
 
     retention_seconds = RETENTION_DAYS * 24 * 3600
-    reports_table.put_item(
-        Item={
-            "companyId": user["companyId"],
-            "reportId": report_id,
-            "ownerUserId": user["userId"],
-            "ownerEmail": user.get("email", ""),
-            "title": str(saved_report.get("title") or "Untitled report")[:240],
-            "createdAt": created_at,
-            "updatedAt": now_iso(),
-            "payload": json.dumps(saved_report, separators=(",", ":")),
-            "expiresAt": int(time.time()) + retention_seconds,
-        }
-    )
+    try:
+        reports_table.put_item(
+            Item={
+                "companyId": company_id,
+                "reportId": report_id,
+                "ownerUserId": owner_user_id,
+                "ownerEmail": owner_email,
+                "title": str(saved_report.get("title") or "Untitled report")[:240],
+                "createdAt": created_at,
+                "updatedAt": now_iso(),
+                "payload": serialized,
+                "expiresAt": int(time.time()) + retention_seconds,
+            },
+            **condition,
+        )
+    except ClientError as error:
+        if aws_error_code(error) == "ConditionalCheckFailedException":
+            raise ApiError("Report was changed by someone else. Reload and try again.", 409)
+        raise
 
-    return respond({"report": hydrate_report(saved_report)}, 200, event)
+    return respond({"report": hydrate_report(saved_report, company_id)}, 200, event)
 
 
 def get_report(event, user, report_id):
-    item = get_report_item(user["companyId"], report_id)
+    item = get_live_report_item(user["companyId"], report_id)
     if not item:
         return respond({"error": "Report not found."}, 404, event)
-    return respond({"report": public_report_from_item(item)}, 200, event)
+    return respond({"report": public_report_from_item(item, user["companyId"])}, 200, event)
 
 
 def delete_report(event, user, report_id):
-    reports_table.delete_item(Key={"companyId": user["companyId"], "reportId": report_id})
+    company_id = user["companyId"]
+    item = get_report_item(company_id, report_id)
+    if not item:
+        return respond({"ok": True}, 200, event)
+    require_report_manager(user, item.get("ownerUserId", ""))
+
+    # Reports can reference the same photo; lifecycle retention handles object cleanup independently.
+    reports_table.delete_item(Key={"companyId": company_id, "reportId": report_id})
     return respond({"ok": True}, 200, event)
 
 
 def create_share_link(event, user, report_id):
-    item = get_report_item(user["companyId"], report_id)
+    item = get_live_report_item(user["companyId"], report_id)
     if not item:
         return respond({"error": "Report not found."}, 404, event)
+    require_report_manager(user, item.get("ownerUserId", ""))
 
     share_id = f"share-{uuid.uuid4().hex[:18]}"
     expires_at = int(time.time()) + SHARE_LINK_TTL_DAYS * 24 * 3600
+    try:
+        expires_at = min(expires_at, int(item.get("expiresAt")))
+    except (TypeError, ValueError):
+        pass
     shares_table.put_item(
         Item={
             "shareId": share_id,
@@ -232,19 +353,21 @@ def create_share_link(event, user, report_id):
 def get_shared_report(event, share_id):
     response = shares_table.get_item(Key={"shareId": share_id})
     share = response.get("Item")
-    if not share or int(share.get("expiresAt", 0)) < int(time.time()):
+    if not share or int(share.get("expiresAt", 0)) <= int(time.time()):
         return respond({"error": "Share link is not available."}, 404, event)
 
-    item = get_report_item(share["companyId"], share["reportId"])
+    item = get_live_report_item(share["companyId"], share["reportId"])
     if not item:
         return respond({"error": "Report not found."}, 404, event)
-    return respond({"report": public_report_from_item(item), "shareId": share_id}, 200, event)
+    hydrated = hydrate_report(json.loads(item["payload"]), share["companyId"])
+    return respond({"report": shared_report_view(hydrated), "shareId": share_id}, 200, event)
 
 
 def create_crm_export(event, user, report_id):
-    item = get_report_item(user["companyId"], report_id)
+    item = get_live_report_item(user["companyId"], report_id)
     if not item:
         return respond({"error": "Report not found."}, 404, event)
+    require_report_manager(user, item.get("ownerUserId", ""))
 
     report = json.loads(item["payload"])
     output = io.StringIO()
@@ -271,46 +394,73 @@ def create_crm_export(event, user, report_id):
     company = report.get("company", {})
     writer.writerow(
         [
-            report.get("id", ""),
-            report.get("createdAt", ""),
-            details.get("homeownerName", ""),
-            details.get("propertyAddress", ""),
-            recommendation.get("status", ""),
-            recommendation.get("confidence", ""),
-            readiness.get("leadQualityScore", ""),
-            recommendation.get("recommendedSalesPath", ""),
-            recommendation.get("nextBestAction", ""),
-            company.get("repName", ""),
-            company.get("email", ""),
-            company.get("companyName", ""),
+            csv_safe(value)
+            for value in [
+                report.get("id", ""),
+                report.get("createdAt", ""),
+                details.get("homeownerName", ""),
+                details.get("propertyAddress", ""),
+                recommendation.get("status", ""),
+                recommendation.get("confidence", ""),
+                readiness.get("leadQualityScore", ""),
+                recommendation.get("recommendedSalesPath", ""),
+                recommendation.get("nextBestAction", ""),
+                company.get("repName", ""),
+                company.get("email", ""),
+                company.get("companyName", ""),
+            ]
         ]
     )
-    return respond({"fileName": f"{report_id}-crm-export.csv", "csv": output.getvalue()}, 200, event)
+    return respond({"fileName": f"{safe_id(report_id) or 'report'}-crm-export.csv", "csv": output.getvalue()}, 200, event)
+
+
+def csv_safe(value):
+    """Neutralize spreadsheet formulas: a leading = + - @ tab or CR gets a quote prefix."""
+    if isinstance(value, bool) or isinstance(value, (int, float, Decimal)):
+        return value
+    text = "" if value is None else value if isinstance(value, str) else str(value)
+    stripped = text.lstrip(" ")
+    if text.startswith(CSV_FORMULA_PREFIXES) or (stripped and stripped.startswith(CSV_FORMULA_PREFIXES)):
+        return "'" + text
+    return text
 
 
 def create_photo_presign(event, user):
     payload = read_json(event)
     file_name = sanitize_file_name(str(payload.get("fileName", "roof-photo.jpg")))
     content_type = str(payload.get("contentType", "image/jpeg")).lower()
-    size_bytes = int(payload.get("sizeBytes", 0) or 0)
+    try:
+        size_bytes = int(payload.get("sizeBytes", 0) or 0)
+    except (TypeError, ValueError):
+        raise ValueError("sizeBytes must be a number.")
 
     if content_type not in ALLOWED_PHOTO_TYPES:
         raise ValueError("Unsupported photo type.")
     if size_bytes <= 0 or size_bytes > MAX_PHOTO_BYTES:
         raise ValueError("Photo must be between 1 byte and 12 MB.")
 
-    key = f"companies/{user['companyId']}/uploads/{uuid.uuid4().hex}/{file_name}"
-    upload_url = s3.generate_presigned_url(
-        "put_object",
-        Params={
-            "Bucket": PHOTO_BUCKET,
-            "Key": key,
-            "ContentType": content_type,
-        },
-        ExpiresIn=900,
-        HttpMethod="PUT",
+    key = f"{company_upload_prefix(user['companyId'])}{uuid.uuid4().hex}/{file_name}"
+    # POST policy lets S3 enforce size and content type; a presigned PUT cannot bound the body size.
+    post = s3.generate_presigned_post(
+        Bucket=PHOTO_BUCKET,
+        Key=key,
+        Fields={"Content-Type": content_type},
+        Conditions=[
+            {"Content-Type": content_type},
+            ["content-length-range", 1, MAX_PHOTO_BYTES],
+        ],
+        ExpiresIn=PRESIGN_TTL_SECONDS,
     )
-    return respond({"uploadUrl": upload_url, "storageKey": key, "expiresIn": 900}, 200, event)
+    return respond(
+        {
+            "uploadUrl": post["url"],
+            "uploadFields": post["fields"],
+            "storageKey": key,
+            "expiresIn": PRESIGN_TTL_SECONDS,
+        },
+        200,
+        event,
+    )
 
 
 def create_gemini_suggestions(event, user):
@@ -322,11 +472,16 @@ def create_gemini_suggestions(event, user):
         for photo in photos
         if isinstance(photo, dict)
         and isinstance(photo.get("photoId"), str)
+        and 0 < len(photo["photoId"]) <= 120
         and isinstance(photo.get("fileName"), str)
         and isinstance(photo.get("mimeType"), str)
+        and photo["mimeType"].lower() in ALLOWED_PHOTO_TYPES
         and isinstance(photo.get("dataBase64"), str)
         and photo.get("dataBase64")
     ]
+    for photo in valid_photos:
+        photo["fileName"] = photo["fileName"][:120]
+        photo["mimeType"] = photo["mimeType"].lower()
 
     if not valid_photos:
         raise ValueError("No valid photos were provided.")
@@ -345,8 +500,13 @@ def create_gemini_suggestions(event, user):
         with urllib.request.urlopen(request, timeout=18) as response:
             gemini = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
-        details = error.read().decode("utf-8")[:700]
-        return respond({"configured": True, "suggestions": [], "error": f"Gemini returned {error.code}.", "details": details}, 502, event)
+        # The provider body and headers are never returned or logged; only the status code is.
+        log_event("warning", "provider_error", provider="gemini", providerStatus=error.code)
+        error.close()
+        return respond({"configured": True, "suggestions": [], "error": f"Gemini returned {error.code}."}, 502, event)
+    except (urllib.error.URLError, TimeoutError, ValueError) as error:
+        log_event("warning", "provider_error", provider="gemini", errorType=type(error).__name__)
+        return respond({"configured": True, "suggestions": [], "error": "Gemini request failed."}, 502, event)
 
     model_text = "\n".join(
         part.get("text", "")
@@ -356,7 +516,9 @@ def create_gemini_suggestions(event, user):
     )
     parsed = parse_model_json(model_text)
     suggestions = normalize_suggestions(parsed.get("suggestions", []), valid_photos)
-    return respond({"configured": True, "provider": "gemini", "model": GEMINI_MODEL, "suggestions": suggestions, "warnings": parsed.get("warnings", [])}, 200, event)
+    warnings = parsed.get("warnings")
+    warnings = [warning[:200] for warning in warnings[:5] if isinstance(warning, str)] if isinstance(warnings, list) else []
+    return respond({"configured": True, "provider": "gemini", "model": GEMINI_MODEL, "suggestions": suggestions, "warnings": warnings}, 200, event)
 
 
 def create_solar_estimate(event, user):
@@ -396,12 +558,16 @@ def create_solar_estimate(event, user):
         with urllib.request.urlopen(url, timeout=8) as response:
             pvwatts = json.loads(response.read().decode("utf-8"))
     except Exception as error:
-        local_estimate["warnings"].append(f"NREL PVWatts estimate failed; using local assumptions. {error}")
+        # The request URL carries the API key and exception text can echo it, so neither is surfaced.
+        if isinstance(error, urllib.error.HTTPError):
+            error.close()
+        log_event("warning", "provider_error", provider="nrel", errorType=type(error).__name__)
+        local_estimate["warnings"].append("NREL PVWatts estimate failed; using local assumptions.")
         return respond({"estimate": local_estimate}, 200, event)
 
     outputs = pvwatts.get("outputs", {})
     if not outputs.get("ac_annual"):
-        local_estimate["warnings"].extend(pvwatts.get("errors") or ["NREL PVWatts did not return production data."])
+        local_estimate["warnings"].append("NREL PVWatts did not return production data.")
         return respond({"estimate": local_estimate}, 200, event)
 
     estimate = estimate_solar(
@@ -424,26 +590,255 @@ def get_report_item(company_id, report_id):
     return response.get("Item")
 
 
-def public_report_from_item(item):
-    return hydrate_report(json.loads(item["payload"]))
+def get_live_report_item(company_id, report_id):
+    """Fetch a report, treating expired items as missing; DynamoDB TTL deletion is asynchronous."""
+    item = get_report_item(company_id, report_id)
+    return None if not item or report_expired(item) else item
 
 
-def hydrate_report(report):
-    evidence = report.get("report", {}).get("photoEvidence", [])
-    if isinstance(evidence, list):
-        for item in evidence:
-            storage_key = item.get("storageKey") if isinstance(item, dict) else None
-            if storage_key:
-                item["previewUrl"] = s3.generate_presigned_url(
-                    "get_object",
-                    Params={"Bucket": PHOTO_BUCKET, "Key": storage_key},
-                    ExpiresIn=900,
-                    HttpMethod="GET",
-                )
+def report_expired(item):
+    try:
+        return int(item["expiresAt"]) <= int(time.time())
+    except (KeyError, TypeError, ValueError):
+        return True
+
+
+def public_report_from_item(item, company_id):
+    return hydrate_report(json.loads(item["payload"]), company_id)
+
+
+def require_report_manager(user, owner_user_id):
+    """Admins manage every report in the company; reps only the ones they own."""
+    if user["role"] == "admin":
+        return
+    if user["role"] == "rep" and owner_user_id and owner_user_id == user["userId"]:
+        return
+    raise ApiError("You do not have permission to change this report.", 403)
+
+
+def company_upload_prefix(company_id):
+    return f"companies/{company_id}/uploads/"
+
+
+def is_company_storage_key(storage_key, company_id):
+    if not isinstance(storage_key, str) or len(storage_key) > 512:
+        return False
+    prefix = company_upload_prefix(company_id)
+    if not storage_key.startswith(prefix):
+        return False
+    suffix = storage_key[len(prefix) :]
+    return bool(STORAGE_SUFFIX_PATTERN.match(suffix)) and ".." not in suffix.split("/")
+
+
+def sanitize_saved_report(saved_report, company_id):
+    """Validate tenant storage keys and drop client-supplied preview URLs before the report is stored."""
+    evidence = saved_report.get("report", {}).get("photoEvidence") if isinstance(saved_report.get("report"), dict) else None
+    if evidence is None:
+        return
+    if not isinstance(evidence, list):
+        raise ValueError("photoEvidence must be a list.")
+    for item in evidence:
+        if not isinstance(item, dict):
+            raise ValueError("photoEvidence entries must be objects.")
+        storage_key = item.get("storageKey")
+        if storage_key not in (None, "") and not is_company_storage_key(storage_key, company_id):
+            raise ValueError("Photo storage key is not valid for this company.")
+        if not storage_key:
+            item.pop("storageKey", None)
+        # Hosted photos get a fresh presigned URL on read; only bundled demo images may keep a path.
+        preview_url = item.get("previewUrl")
+        if storage_key or not (isinstance(preview_url, str) and DEMO_PREVIEW_PATTERN.match(preview_url)):
+            item.pop("previewUrl", None)
+
+
+def hydrate_report(report, company_id):
+    """Presign hosted photos for this company only; foreign or malformed keys are dropped, never signed."""
+    readiness = report.get("report") if isinstance(report, dict) else None
+    evidence = readiness.get("photoEvidence", []) if isinstance(readiness, dict) else []
+    if not isinstance(evidence, list):
+        return report
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        storage_key = item.pop("storageKey", None)
+        preview_url = item.pop("previewUrl", None)
+        if storage_key and is_company_storage_key(storage_key, company_id):
+            item["storageKey"] = storage_key
+            item["previewUrl"] = s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": PHOTO_BUCKET, "Key": storage_key},
+                ExpiresIn=PRESIGN_TTL_SECONDS,
+                HttpMethod="GET",
+            )
+        elif not storage_key and isinstance(preview_url, str) and DEMO_PREVIEW_PATTERN.match(preview_url):
+            item["previewUrl"] = preview_url
     return report
 
 
+def shared_report_view(report):
+    """Homeowner-facing projection built from an allowlist.
+
+    Rep-only fields keep their type shape (empty string, empty list or zero) so the existing React
+    report components can render without special cases.
+    """
+    details = report.get("details") if isinstance(report.get("details"), dict) else {}
+    readiness = report.get("report") if isinstance(report.get("report"), dict) else {}
+    recommendation = readiness.get("recommendation") if isinstance(readiness.get("recommendation"), dict) else {}
+    scores = readiness.get("scores") if isinstance(readiness.get("scores"), dict) else {}
+    company = report.get("company") if isinstance(report.get("company"), dict) else {}
+
+    photo_names = report.get("photoNames")
+    view = {
+        "id": _text(report.get("id"), 120),
+        "sample": report.get("sample") is True or _text(report.get("id"), 120).startswith("demo-"),
+        "title": _text(report.get("title"), 240),
+        "createdAt": _text(report.get("createdAt"), 40),
+        "details": {
+            "homeownerName": _text(details.get("homeownerName"), 160),
+            "propertyAddress": _text(details.get("propertyAddress"), 300),
+            "roofAgeYears": _number(details.get("roofAgeYears")),
+            "roofMaterial": _text(details.get("roofMaterial"), 40),
+            "knownLeaks": _text(details.get("knownLeaks"), 20),
+            "existingSolar": _text(details.get("existingSolar"), 20),
+            "utilityBillAvailable": _text(details.get("utilityBillAvailable"), 20),
+            "desiredOutcome": _text(details.get("desiredOutcome"), 40),
+            "repNotes": "",
+            "visibleConditionFlags": _flags(details.get("visibleConditionFlags")),
+        },
+        "report": {
+            "generatedAt": _text(readiness.get("generatedAt"), 40),
+            "assessmentMode": _text(readiness.get("assessmentMode"), 40),
+            "scores": {
+                key: _number(scores.get(key)) or 0
+                for key in ("roofAgeRisk", "visibleConditionRisk", "leakRisk", "solarReadiness", "urgency", "dataCompleteness", "totalRisk")
+            },
+            "recommendation": {
+                "status": _text(recommendation.get("status"), 40),
+                "label": _text(recommendation.get("label"), 160),
+                "recommendedSalesPath": "",
+                "confidence": _text(recommendation.get("confidence"), 20),
+                "confidenceRationale": _text(recommendation.get("confidenceRationale"), 600),
+                "nextBestAction": "",
+            },
+            "keyObservations": _text_list(readiness.get("keyObservations")),
+            "roofRiskFactors": _text_list(readiness.get("roofRiskFactors")),
+            "solarReadinessFactors": _text_list(readiness.get("solarReadinessFactors")),
+            "questionsToAsk": _text_list(readiness.get("questionsToAsk")),
+            "photoEvidence": _shared_photo_evidence(readiness.get("photoEvidence")),
+            "photoAnalysis": _shared_photo_analysis(readiness.get("photoAnalysis")),
+            "analysisTrace": [],
+            "suggestedTalkTrack": "",
+            "disclaimer": _text(readiness.get("disclaimer"), 1200),
+            "leadQualityScore": 0,
+        },
+        "company": {
+            "companyName": _text(company.get("companyName"), 160),
+            "repName": _text(company.get("repName"), 160),
+            "phone": _text(company.get("phone"), 80),
+            "email": _text(company.get("email"), 200),
+            "licenseNote": _text(company.get("licenseNote"), 400),
+        },
+        "photoCount": _number(report.get("photoCount")) or 0,
+        "photoNames": _text_list(photo_names, 20, 160),
+    }
+    solar = _shared_solar(readiness.get("solarOpportunity"))
+    if solar:
+        view["report"]["solarOpportunity"] = solar
+    return view
+
+
+def _text(value, max_length):
+    return value[:max_length] if isinstance(value, str) else ""
+
+
+def _number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        return None
+    return value
+
+
+def _text_list(value, max_items=30, max_length=600):
+    return [item[:max_length] for item in value[:max_items] if isinstance(item, str)] if isinstance(value, list) else []
+
+
+def _flags(value):
+    return [flag for flag in value if isinstance(flag, str) and flag in ALLOWED_FLAGS] if isinstance(value, list) else []
+
+
+def _shared_photo_evidence(value):
+    shared = []
+    for item in value[:30] if isinstance(value, list) else []:
+        if not isinstance(item, dict):
+            continue
+        entry = {
+            "photoId": _text(item.get("photoId"), 120),
+            "fileName": _text(item.get("fileName"), 160),
+            "caption": _text(item.get("caption"), 300),
+            "observations": _flags(item.get("observations")),
+            "source": _text(item.get("source"), 40),
+        }
+        # previewUrl is only ever a freshly presigned company URL or a bundled demo path (see hydrate_report).
+        if isinstance(item.get("previewUrl"), str):
+            entry["previewUrl"] = item["previewUrl"]
+        shared.append(entry)
+    return shared
+
+
+def _shared_photo_analysis(value):
+    shared = []
+    for item in value[:30] if isinstance(value, list) else []:
+        if not isinstance(item, dict):
+            continue
+        shared.append(
+            {
+                "photoId": _text(item.get("photoId"), 120),
+                "fileName": _text(item.get("fileName"), 160),
+                "caption": _text(item.get("caption"), 300),
+                "observations": _flags(item.get("observations")),
+                "source": _text(item.get("source"), 40),
+                "riskLevel": _text(item.get("riskLevel"), 40),
+                "riskScore": _number(item.get("riskScore")) or 0,
+                "summary": _text(item.get("summary"), 600),
+                "reportImpact": _text(item.get("reportImpact"), 600),
+            }
+        )
+    return shared
+
+
+def _shared_solar(value):
+    if not isinstance(value, dict):
+        return None
+    geocode = value.get("geocode") if isinstance(value.get("geocode"), dict) else {}
+    monthly = value.get("monthlyProductionKwh")
+    return {
+        "source": _text(value.get("source"), 40),
+        "geocode": {
+            "provider": "us-census",
+            "status": _text(geocode.get("status"), 20),
+            "matchedAddress": _text(geocode.get("matchedAddress"), 300),
+            "message": _text(geocode.get("message"), 300),
+        },
+        "solarScore": _number(value.get("solarScore")) or 0,
+        "confidence": _text(value.get("confidence"), 20),
+        "confidenceRationale": _text(value.get("confidenceRationale"), 600),
+        "usableRoofAreaSqft": _number(value.get("usableRoofAreaSqft")),
+        "panelCount": _number(value.get("panelCount")),
+        "systemCapacityKw": _number(value.get("systemCapacityKw")),
+        "estimatedDcWatts": _number(value.get("estimatedDcWatts")),
+        "annualProductionKwh": _number(value.get("annualProductionKwh")),
+        "monthlyProductionKwh": [item for item in monthly[:12] if _number(item) is not None] if isinstance(monthly, list) else [],
+        "roofOrientation": _text(value.get("roofOrientation"), 20),
+        "roofPitchDegrees": _number(value.get("roofPitchDegrees")),
+        "shadeLevel": _text(value.get("shadeLevel"), 20),
+        "sunHoursPerDay": _number(value.get("sunHoursPerDay")),
+        "capacityFactorPercent": _number(value.get("capacityFactorPercent")),
+        "assumptions": _text_list(value.get("assumptions")),
+        "warnings": _text_list(value.get("warnings")),
+    }
+
+
 def get_user_context(event):
+    """Build the caller identity from verified JWT claims; missing or malformed tenant claims fail closed."""
     claims = (
         event.get("requestContext", {})
         .get("authorizer", {})
@@ -454,14 +849,18 @@ def get_user_context(event):
         return None
 
     user_id = claims.get("sub")
-    if not user_id:
+    if not user_id or not isinstance(user_id, str):
         return None
 
-    company_id = claims.get("custom:companyId") or f"company-{user_id}"
-    role = claims.get("custom:role") or "admin"
+    company_id = claims.get("custom:companyId")
+    role = claims.get("custom:role")
+    if not isinstance(company_id, str) or not COMPANY_ID_PATTERN.match(company_id):
+        raise ApiError("Account is not assigned to a valid company.", 403)
+    if not isinstance(role, str) or role not in VALID_ROLES:
+        raise ApiError("Account does not have a valid role.", 403)
     return {
         "userId": user_id,
-        "companyId": safe_company_id(company_id),
+        "companyId": company_id,
         "role": role,
         "email": claims.get("email", ""),
     }
@@ -469,12 +868,15 @@ def get_user_context(event):
 
 def read_json(event):
     body = event.get("body") or "{}"
-    if event.get("isBase64Encoded"):
-        body = base64.b64decode(body).decode("utf-8")
     try:
-        return json.loads(body)
-    except json.JSONDecodeError:
+        if event.get("isBase64Encoded"):
+            body = base64.b64decode(body).decode("utf-8")
+        payload = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
         raise ValueError("Invalid JSON body.")
+    if not isinstance(payload, dict):
+        raise ValueError("JSON body must be an object.")
+    return payload
 
 
 def respond(payload, status, event):
@@ -487,6 +889,8 @@ def respond(payload, status, event):
             "Access-Control-Allow-Headers": "authorization,content-type",
             "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
             "Content-Type": "application/json",
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
         },
         "body": "" if status == 204 else json.dumps(to_jsonable(payload), separators=(",", ":")),
     }
@@ -496,10 +900,6 @@ def get_secret(name):
     if name not in _secret_cache:
         _secret_cache[name] = ssm.get_parameter(Name=name, WithDecryption=True)["Parameter"]["Value"]
     return _secret_cache[name]
-
-
-class RateLimitExceeded(Exception):
-    pass
 
 
 def check_rate_limit(usage_key, limit):
@@ -556,11 +956,16 @@ def build_gemini_payload(photos):
 def parse_model_json(text):
     if not text.strip():
         return {"suggestions": []}
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{[\s\S]*\}", text)
-        return json.loads(match.group(0)) if match else {"suggestions": []}
+    for candidate in (text, (re.search(r"\{[\s\S]*\}", text) or [None])[0]):
+        if not candidate:
+            continue
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return {"suggestions": []}
 
 
 def normalize_suggestions(suggestions, photos):
@@ -572,9 +977,11 @@ def normalize_suggestions(suggestions, photos):
         if photo_id not in photo_ids or photo_id in seen:
             continue
         seen.add(photo_id)
+        raw_observations = suggestion.get("observations")
+        raw_notes = suggestion.get("notes")
         observations = [
             flag
-            for flag in suggestion.get("observations", [])
+            for flag in (raw_observations if isinstance(raw_observations, list) else [])
             if isinstance(flag, str) and flag in ALLOWED_FLAGS
         ]
         normalized.append(
@@ -583,7 +990,7 @@ def normalize_suggestions(suggestions, photos):
                 "caption": str(suggestion.get("caption") or "Roof photo reviewed for visible readiness evidence.")[:180],
                 "observations": list(dict.fromkeys(observations)) or ["limited-or-unclear-photos"],
                 "confidence": clamp_float(suggestion.get("confidence"), 0, 1, 0.45),
-                "notes": [str(note)[:160] for note in suggestion.get("notes", [])[:3] if isinstance(note, str)],
+                "notes": [note[:160] for note in (raw_notes[:3] if isinstance(raw_notes, list) else []) if isinstance(note, str)],
             }
         )
     return normalized
@@ -605,7 +1012,10 @@ def geocode_address(address):
         with urllib.request.urlopen(url, timeout=6) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except Exception as error:
-        return {"provider": "us-census", "status": "error", "message": f"Address geocoding failed. {error}"}
+        if isinstance(error, urllib.error.HTTPError):
+            error.close()
+        log_event("warning", "provider_error", provider="us-census", errorType=type(error).__name__)
+        return {"provider": "us-census", "status": "error", "message": "Address geocoding failed."}
 
     matches = payload.get("result", {}).get("addressMatches", [])
     match = matches[0] if matches else None
@@ -765,10 +1175,6 @@ def safe_id(value):
     if not isinstance(value, str):
         return ""
     return re.sub(r"[^a-zA-Z0-9._:-]+", "-", value)[:120]
-
-
-def safe_company_id(value):
-    return re.sub(r"[^a-zA-Z0-9._:-]+", "-", str(value))[:80] or "company"
 
 
 def now_iso():

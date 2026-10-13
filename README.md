@@ -1,163 +1,131 @@
 # Roof Signal
 
-Roof Signal is a pre-appointment roof and solar readiness workflow for roofing, solar, and roof+solar sales teams. Reps upload roof photos, enter basic job details, and generate a homeowner-friendly report that recommends whether to lead with solar, roof tune-up, roof replacement, or in-person inspection.
+**An AWS/cloud engineering work sample built around a roof + solar readiness workflow.**
 
-## Current product status
+Roof Signal turns roof photos, rep-confirmed observations, and property details into an explainable pre-appointment report. A React/TypeScript frontend runs on Cloudflare Pages; an optional Terraform-managed AWS backend provides invite-only Cognito accounts, company-scoped DynamoDB records, private S3 photos, expiring homeowner links, and server-side Gemini/NREL integrations. The public demo needs no AWS account. This repository demonstrates implementation and operational decisions; it does not claim production adoption, licensed inspection, or final solar design.
 
-This repository now supports both a client-side demo mode and an AWS hosted pilot mode. It is suitable for portfolio demos, prospect discovery, and controlled paid-pilot validation. It is not a licensed roof inspection product and it does not make engineering, permitting, insurance, or structural determinations.
+[Live sample report](https://roofsignal-readiness-agent.pages.dev/app?demo=replacement-first#report) · [Reviewer guide](docs/reviewer-guide.md) · [Architecture](docs/architecture.md) · [Runbook](docs/runbook.md)
 
-## What works now
+<details>
+<summary>Local UI screenshots</summary>
 
-- Sales landing page at `/`.
-- Report builder at `/app`.
-- Multiple roof photo upload with previews and file validation.
-- Photo evidence workflow with per-photo captions and rep-confirmed observation tags.
-- Property/job intake fields for roof age, material, leaks, existing solar, utility bill status, desired outcome, and rep notes.
-- Solar opportunity inputs for usable roof area, roof direction, pitch, panel wattage, and shade.
-- Preliminary solar score, estimated DC watts, panel count, annual production, and monthly production chart.
-- Transparent rule-based scoring for roof age risk, visible condition risk, leak risk, urgency, solar readiness, data completeness, and lead quality.
-- Homeowner-friendly readiness report with transparent scores, photo evidence, homeowner questions, next action, and disclaimer.
-- Photo evidence analysis that shows per-photo risk level, confirmed tags, and how accepted observations affected the report.
-- Explainability trace showing which inputs, rules, Gemini boundaries, and NREL/PVWatts or local solar sources shaped the answer.
-- Local report history, company branding fields, print-friendly output, copyable summaries, and demo scenarios.
-- Optional server-side Gemini photo evidence suggestions. Suggested tags are not used for scoring or reports until the rep accepts or edits them.
-- AWS hosted backend: Cognito invite-only sign-in, DynamoDB saved reports, S3 private photo storage, hosted share links, server-side NREL/Gemini proxying, request-access intake, and CSV export.
-- Visible hosted controls for team role posture, report/photo retention, share-link retention, and per-report audit events.
+Actual local captures with fictional sample details. These show the working tree, not a confirmed live release.
 
-## What is intentionally not built yet
+![Roof Signal landing page](docs/images/landing-desktop.png)
+![Roof Signal sample readiness report](docs/images/report-desktop.png)
 
-- Stripe billing.
-- Direct CRM integrations.
-- Automatic roof-plane measurement, usable surface area detection, shading analysis, or final solar design.
-- Automatic licensed roof inspection or final condition determination from photos.
+</details>
 
-## Tech stack
+## Problem, Solution, Value
 
-- Vite
-- React
-- TypeScript
-- Vitest
-- Plain CSS
-- npm
-- AWS Lambda, API Gateway HTTP API, Cognito, DynamoDB, S3, SSM Parameter Store, and Terraform for hosted mode
+Roof timing can change the scope of a solar appointment. Scattered photos and notes make that decision hard to explain consistently. Roof Signal provides structured intake, visible scoring rules, AI drafts that require human confirmation, and a report separating homeowner guidance from internal sales notes. Its operational value is a repeatable handoff before quoting; no conversion or revenue uplift has been measured.
 
-## Run locally
+## Stack And Engineering Highlights
+
+- **Frontend:** React, TypeScript, Vite, plain CSS, Lucide icons, Vitest; report/job/workspace views, local history, branded print and CSV exports.
+- **Cloud:** API Gateway HTTP API, Python 3.12 Lambda, Cognito, DynamoDB on-demand, private S3, SSM SecureString, CloudWatch, Terraform.
+- **Boundaries:** company-keyed records/photo prefixes, server-assigned account attributes, owner/admin mutations, allowlisted share responses, bounded signed uploads.
+- **Operations:** validation-only GitHub Actions, retained request/access logs, Lambda alarms, throttling, provider quotas, concurrency limits, explicit rollback and cleanup procedures.
+- **Tradeoffs:** one Lambda and one Terraform root keep the sample inspectable. Cloudflare delivers the frontend; AWS owns hosted data. [Decisions](docs/tradeoffs.md).
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Browser[React browser] --> Pages[Cloudflare Pages]
+  Browser --> Cognito[Cognito sign-in]
+  Browser --> API[API Gateway JWT routes]
+  API --> Lambda[Python Lambda]
+  Lambda --> DDB[DynamoDB]
+  Lambda --> SSM[SSM provider keys]
+  Browser -->|Signed upload / image URL| S3[Private S3]
+  Lambda --> Providers[Gemini / Census / NREL]
+  API --> Logs[CloudWatch]
+  Lambda --> Logs
+```
+
+[Container diagram, runtime, auth and data flows](docs/architecture.md). Local mode uses browser storage and solar assumptions; AWS mode requires separate provisioning. The live demo is not evidence that the AWS stack or local changes are deployed.
+
+## Evidence Matrix
+
+| Area          | Evidence                                                                                                                                              |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| IaC           | [Terraform root](infra/aws/main.tf), provider lock, fmt/init/validate in CI; manual plan/apply, no modules or automated plan approval                 |
+| CI/CD         | [Validation workflow](.github/workflows/validate.yml): frontend tests/typechecked build, backend tests, Terraform checks; AWS delivery is manual      |
+| Security      | [Threat model](docs/security.md): resource-scoped IAM, JWT, tenant/owner checks, SSM, private uploads, share projection; limitations explicit         |
+| Reliability   | Provider fallbacks/timeouts, logical expiry, safe record deletion, [rollback/recovery runbook](docs/runbook.md); no failover claim                    |
+| Observability | [Retained logs and error/throttle alarms](docs/observability.md); notification routing, traces and dashboards remain gaps                             |
+| Cost          | On-demand storage, quotas, concurrency, retention and [cost drivers](docs/cost-model.md); no invented bill or savings                                 |
+| Operations    | [Deployment](docs/deployment.md), [troubleshooting](docs/runbook.md), [teardown](docs/teardown.md)                                                    |
+| Testing       | [Domain tests](src/lib/roofReadiness.test.ts), [backend tests](backend/tests), [coverage boundaries](docs/testing.md); no cloud integration/e2e claim |
+| Documentation | [Reviewer guide](docs/reviewer-guide.md), [architecture](docs/architecture.md), [five ADRs](docs/adrs/README.md)                                      |
+
+## Local Quickstart
+
+Node.js 22.12+ and npm. No cloud credentials or provider keys are needed.
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-The default dev server starts at `http://localhost:5173`. If that port is busy:
+Open `http://localhost:5173`: landing at `/`, labeled sample at `/app`, empty job at `/app?blank=1`. Use `npm run dev -- --port 5174` if needed. Demo reports/settings live in this browser; uploaded image bytes are not persisted locally. Clear site data to remove local history.
 
-```bash
-npm run dev -- --port 5174
-```
-
-Open the landing page at `/` and the report builder at `/app`.
-
-For a streamlined demo, open `/app`. It preloads the replacement-first sample case with demo photos, job details, demo company/rep contact information, the limitation acknowledgement, and a generated report. Use `/app?blank=1` for an empty workflow.
-
-## Test and build
+## Validation
 
 ```bash
 npm test
+npm run typecheck
 npm run build
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements-dev.txt
+.venv/bin/python -m unittest discover -s backend/tests -v
+terraform -chdir=infra/aws fmt -check
+terraform -chdir=infra/aws init -backend=false
+terraform -chdir=infra/aws validate
+git diff --check
 ```
 
-## Deploy
+Build output is `dist/`; `public/_redirects` enables SPA routes. No separate ESLint configuration, Checkov/TFLint scan, or Docker runtime. [Testing and smoke procedure](docs/testing.md).
 
-The project builds to `dist/` and includes `public/_redirects` so static hosts can serve `/app` through the single-page React app.
+## Deployment And Configuration
 
-For Cloudflare Pages:
+Cloudflare Pages: Vite preset, `npm run build`, output `dist`, production branch `main`. Inspect the Cloudflare project to confirm its current Git integration; source code alone cannot prove automatic deployment settings.
 
-- Framework preset: Vite
-- Build command: `npm run build`
-- Build output directory: `dist`
-- Production branch: `main`
-- Current production URL: `https://roofsignal-readiness-agent.pages.dev`
+AWS: init, review a plan, apply, inspect outputs and create the first Cognito invitation. The [deployment guide](docs/deployment.md) preserves the setup steps, admin-create-user command, state protection, environment mapping and smoke checks. Never commit environment secrets, Terraform state/plans, provider keys or the Lambda archive.
 
-This repo is connected to Cloudflare Pages for automatic deployments. Pushing to `main` triggers the production build; other branches can create preview builds.
+Use [.env.example](.env.example) for configuration names:
 
-## Environment variables
+- `VITE_AWS_API_URL`, `VITE_AWS_REGION`, `VITE_AWS_USER_POOL_CLIENT_ID`, `VITE_AWS_COGNITO_DOMAIN` enable hosted mode. `VITE_AWS_USER_POOL_ID` is also exported for operator reference.
+- Hosted Gemini/NREL keys are server-side SSM parameters. Terraform state contains their values despite `sensitive = true`; protect state.
+- `VITE_NREL_API_KEY` is browser-visible and suitable only for local experiments. Census matching is U.S.-only; missing provider data falls back to stated assumptions.
+- Demo Gemini is off by default. A server key plus `ENABLE_DEMO_GEMINI=true` enables a same-origin development endpoint; it is unauthenticated and unsuitable as a production abuse boundary. Prefer authenticated AWS mode. Selected images go to Google; only accepted/edited evidence affects scoring.
 
-Copy `.env.example` to `.env.local` if you are experimenting with optional integrations. Do not put production AI provider keys in client-exposed `VITE_*` variables.
+## Operating Model
 
-Optional local solar estimate integration:
+**Security:** invite-only accounts, JWT, tenant/owner checks, private photos, short-lived URLs and homeowner share redaction. Implicit OAuth/browser token storage remain risks. [Security model](docs/security.md).
 
-- U.S. Census Geocoder is used without a key for address-to-coordinate lookup when a report is generated.
-- Add `VITE_NREL_API_KEY` to enable browser-side NREL PVWatts V8 production estimates in local/demo mode.
-- Without an NREL key or matched address, the app falls back to a local assumption-based solar estimate.
-- Final roof area, shade, setbacks, panel layout, and production modeling still require a site survey and installer design tool.
-- In hosted mode, the frontend calls the AWS `/solar-estimate` endpoint so the NREL key is not embedded in the browser bundle.
+**Observability:** CloudWatch access/request metadata, retained Lambda logs and alarms. Notification routing is required for unattended use. Client provenance is explanatory data, not an immutable audit ledger. [Observability model](docs/observability.md).
 
-Optional Gemini photo evidence suggestions:
+**Cost:** no always-on application servers or NAT. On-demand DynamoDB, concurrency limits, API throttles, daily provider quotas, report/share TTLs and S3 lifecycle constrain some usage; they are not a billing cap. [Cost model](docs/cost-model.md).
 
-- Add `GEMINI_API_KEY` to `.env.local` only if you want to test the local/Cloudflare function path.
-- In hosted AWS mode, Terraform stores the Gemini key in SSM and the signed-in app calls the AWS `/photo-evidence-suggestions` endpoint.
-- Do not add a production Gemini key to Cloudflare Pages unless you intentionally want the unauthenticated demo function enabled.
-- Optional: set `GEMINI_MODEL`; the default is `gemini-2.5-flash-lite`.
-- In unauthenticated demo mode, the browser sends selected roof photos to `/api/photo-evidence-suggestions`. In hosted mode, the browser sends resized images to the authenticated AWS endpoint.
-- Gemini suggestions are stored as `vision-suggested` until the rep accepts, edits, or rejects them. Unconfirmed suggestions do not affect scoring and do not appear in homeowner-facing reports.
+**Cleanup:** deleting a report closes its share links; photos remain until independent lifecycle cleanup because reports can reuse them. Already issued image URLs can work until expiry. Full teardown requires reviewed data disposal, emptying the non-force-destroy photo bucket, then Terraform destroy. Cloudflare and browser data are separate. [Teardown](docs/teardown.md).
 
-AWS hosted backend variables:
+## Limitations And Next Improvements
 
-- `VITE_AWS_API_URL`
-- `VITE_AWS_REGION`
-- `VITE_AWS_USER_POOL_ID`
-- `VITE_AWS_USER_POOL_CLIENT_ID`
-- `VITE_AWS_COGNITO_DOMAIN`
+No licensed inspection, automatic roof measurement, structural determination, insurance decision, engineering/permitting review, or final panel layout. Roof area/shading are assumptions. No paid users, accuracy benchmark, SLA, recovery exercise, billing or direct CRM integration is claimed.
 
-Create/update the AWS backend:
+Next: authorization code + PKCE, stronger session handling, server-authored audit events and score validation, AWS integration tests and solar parity fixtures, report pagination, secure remote state, backups/recovery drills, alarm recipients and budget alerts. Existing demo photo provenance/licensing needs a record before broader redistribution. [Review gaps](docs/reviewer-guide.md).
 
-```bash
-terraform -chdir=infra/aws init
-TF_VAR_gemini_api_key=... TF_VAR_nrel_api_key=... terraform -chdir=infra/aws apply
-terraform -chdir=infra/aws output
-```
+## Project Structure
 
-Create the first company admin:
-
-```bash
-aws cognito-idp admin-create-user \
-  --region us-east-1 \
-  --user-pool-id <user-pool-id> \
-  --username <work-email> \
-  --user-attributes \
-    Name=email,Value=<work-email> \
-    Name=email_verified,Value=true \
-    Name=custom:companyId,Value=<company-slug> \
-    Name=custom:role,Value=admin
-```
-
-Hosted data policy:
-
-- Reports are stored in DynamoDB with a default 90-day TTL.
-- Uploaded roof photos are stored in a private S3 bucket with server-side encryption and a default 90-day lifecycle expiration.
-- Photo access uses short-lived presigned URLs.
-- Share links are stored separately with a default 30-day TTL.
-- Gemini and NREL calls are server-side and daily-limited per company in DynamoDB.
-
-## Product positioning
-
-Honest claim today:
-
-> Generate a roof/solar readiness report from rep-entered job details, uploaded roof photos, rep-confirmed photo evidence tags, optional Gemini tag suggestions, and preliminary solar opportunity assumptions.
-
-Next production milestone:
-
-> Create branded, saved, shareable pre-appointment roof/solar readiness reports for every rep before quoting, with private photo storage and company-separated hosted accounts.
-
-## AI vision roadmap
-
-Gemini photo evidence suggestions are now connected through a server-side endpoint, but the product still treats AI output as assistive draft evidence. The next implementation phase should:
-
-1. Add provider usage logging, error analytics, and per-report AI provenance.
-2. Let reps edit Gemini captions inline before accepting all suggestions.
-3. Add a second-pass reviewer prompt for low-confidence or conflicting photo evidence.
-4. Add cost controls, rate limits, and team-level enable/disable settings.
-5. Keep every report labeled as rule-based, vision-assisted, or manually confirmed so the app never implies a licensed inspection.
-
-## Safety and trust language
-
-Roof Signal provides visible-risk triage and sales sequencing guidance. A qualified roof professional should confirm roof condition before final roof or solar scope. The product should not be positioned as a replacement for a licensed roofer, engineer, inspector, insurance adjuster, utility, or permitting authority.
+| Path                            | Responsibility                                                |
+| ------------------------------- | ------------------------------------------------------------- |
+| `src/App.tsx`, `src/styles.css` | Landing, job/report/workspace and print presentation          |
+| `src/lib/`                      | Scoring, estimates, storage, AWS/provider clients and tests   |
+| `backend/lambda/app.py`         | Hosted authorization, persistence, uploads and provider calls |
+| `backend/tests/`                | Mocked boundary tests, excluded from Lambda archive           |
+| `functions/`                    | Optional local/Cloudflare demo evidence endpoint              |
+| `infra/aws/`                    | Terraform-managed AWS stack                                   |
+| `.github/workflows/`            | Credential-free validation                                    |
+| `docs/`                         | Architecture, decisions, operations and review evidence       |

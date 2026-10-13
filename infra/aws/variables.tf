@@ -63,3 +63,15 @@ variable "nrel_daily_limit" {
   type        = number
   default     = 300
 }
+
+variable "lambda_reserved_concurrency" {
+  description = "Reserved concurrency for the API Lambda; caps cost and provider usage under abuse. Use -1 for no reservation (required if the account has too little unreserved concurrency)."
+  type        = number
+  default     = 5
+}
+
+variable "alarm_actions" {
+  description = "ARNs (for example an SNS topic) notified when CloudWatch alarms fire or recover. Empty by default, so alarms change state but notify nobody until this is configured."
+  type        = list(string)
+  default     = []
+}

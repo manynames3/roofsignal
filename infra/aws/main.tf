@@ -28,8 +28,11 @@ resource "random_id" "suffix" {
 }
 
 locals {
-  name_prefix       = "${var.project_name}-${random_id.suffix.hex}"
-  lambda_source_dir = "${path.module}/../../backend/lambda"
+  name_prefix         = "${var.project_name}-${random_id.suffix.hex}"
+  lambda_source_file  = "${path.module}/../../backend/lambda/app.py"
+  api_function_name   = "${local.name_prefix}-api"
+  log_retention_days  = 14
+  photo_upload_prefix = "companies/*/uploads/*"
   common_tags = {
     App       = "Roof Signal"
     ManagedBy = "Terraform"
@@ -77,6 +80,9 @@ resource "aws_cognito_user_pool" "main" {
     required            = true
   }
 
+  # companyId and role stay mutable because changing schema mutability forces pool replacement.
+  # The web client is denied write access to them below (write_attributes), so only admin APIs
+  # (AdminUpdateUserAttributes) can change tenant or role claims.
   schema {
     attribute_data_type = "String"
     mutable             = true
@@ -127,6 +133,9 @@ resource "aws_cognito_user_pool_client" "web" {
     "https://roofsignal-readiness-agent.pages.dev/"
   ]
   supported_identity_providers = ["COGNITO"]
+
+  read_attributes  = ["email", "email_verified", "custom:companyId", "custom:role"]
+  write_attributes = ["email"]
 
   access_token_validity  = 60
   id_token_validity      = 60
@@ -242,6 +251,33 @@ resource "aws_s3_bucket_public_access_block" "photos" {
   restrict_public_buckets = true
 }
 
+resource "aws_s3_bucket_policy" "photos_tls_only" {
+  bucket = aws_s3_bucket.photos.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "DenyInsecureTransport"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource = [
+          aws_s3_bucket.photos.arn,
+          "${aws_s3_bucket.photos.arn}/*"
+        ]
+        Condition = {
+          Bool = {
+            "aws:SecureTransport" = "false"
+          }
+        }
+      }
+    ]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.photos]
+}
+
 resource "aws_s3_bucket_server_side_encryption_configuration" "photos" {
   bucket = aws_s3_bucket.photos.id
 
@@ -257,7 +293,7 @@ resource "aws_s3_bucket_cors_configuration" "photos" {
 
   cors_rule {
     allowed_headers = ["*"]
-    allowed_methods = ["GET", "PUT", "HEAD"]
+    allowed_methods = ["GET", "POST", "HEAD"]
     allowed_origins = var.allowed_origins
     expose_headers  = ["ETag"]
     max_age_seconds = 3000
@@ -281,10 +317,26 @@ resource "aws_s3_bucket_lifecycle_configuration" "photos" {
   }
 }
 
+# Only app.py is packaged; backend/tests and requirements-dev.txt stay out of the Lambda archive.
 data "archive_file" "lambda" {
   type        = "zip"
-  source_dir  = local.lambda_source_dir
+  source_file = local.lambda_source_file
   output_path = "${path.module}/lambda.zip"
+}
+
+# If the function was already invoked before these log groups were managed, Lambda created
+# its log group automatically. Import it first:
+#   terraform import aws_cloudwatch_log_group.lambda /aws/lambda/<function name>
+resource "aws_cloudwatch_log_group" "lambda" {
+  name              = "/aws/lambda/${local.api_function_name}"
+  retention_in_days = local.log_retention_days
+  tags              = local.common_tags
+}
+
+resource "aws_cloudwatch_log_group" "api_access" {
+  name              = "/aws/apigateway/${local.name_prefix}-api"
+  retention_in_days = local.log_retention_days
+  tags              = local.common_tags
 }
 
 resource "aws_iam_role" "lambda" {
@@ -306,11 +358,6 @@ resource "aws_iam_role" "lambda" {
   tags = local.common_tags
 }
 
-resource "aws_iam_role_policy_attachment" "lambda_basic" {
-  role       = aws_iam_role.lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
 resource "aws_iam_role_policy" "lambda_app" {
   name = "${local.name_prefix}-api-policy"
   role = aws_iam_role.lambda.id
@@ -318,6 +365,11 @@ resource "aws_iam_role_policy" "lambda_app" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.lambda.arn}:*"
+      },
       {
         Effect = "Allow"
         Action = [
@@ -340,7 +392,7 @@ resource "aws_iam_role_policy" "lambda_app" {
           "s3:GetObject",
           "s3:PutObject"
         ]
-        Resource = "${aws_s3_bucket.photos.arn}/*"
+        Resource = "${aws_s3_bucket.photos.arn}/${local.photo_upload_prefix}"
       },
       {
         Effect = "Allow"
@@ -357,7 +409,7 @@ resource "aws_iam_role_policy" "lambda_app" {
 }
 
 resource "aws_lambda_function" "api" {
-  function_name    = "${local.name_prefix}-api"
+  function_name    = local.api_function_name
   role             = aws_iam_role.lambda.arn
   handler          = "app.handler"
   runtime          = "python3.12"
@@ -365,6 +417,9 @@ resource "aws_lambda_function" "api" {
   source_code_hash = data.archive_file.lambda.output_base64sha256
   timeout          = 25
   memory_size      = 512
+
+  # -1 leaves the function unreserved (needed when the account has too little unreserved concurrency).
+  reserved_concurrent_executions = var.lambda_reserved_concurrency
 
   environment {
     variables = {
@@ -385,7 +440,7 @@ resource "aws_lambda_function" "api" {
   }
 
   depends_on = [
-    aws_iam_role_policy_attachment.lambda_basic,
+    aws_cloudwatch_log_group.lambda,
     aws_iam_role_policy.lambda_app
   ]
 
@@ -444,7 +499,80 @@ resource "aws_apigatewayv2_stage" "api" {
     throttling_rate_limit  = 15
   }
 
+  # Metadata only: no client IP, user agent, raw path (share IDs), headers or claims.
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access.arn
+
+    format = jsonencode({
+      requestId         = "$context.requestId"
+      requestTime       = "$context.requestTime"
+      httpMethod        = "$context.httpMethod"
+      routeKey          = "$context.routeKey"
+      status            = "$context.status"
+      protocol          = "$context.protocol"
+      responseLength    = "$context.responseLength"
+      responseLatency   = "$context.responseLatency"
+      integrationStatus = "$context.integrationStatus"
+      errorType         = "$context.error.responseType"
+    })
+  }
+
   tags = local.common_tags
+}
+
+# Alarms have no notification target unless var.alarm_actions is set (for example an SNS topic ARN).
+# Without it they only change state in CloudWatch and nobody is paged.
+resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
+  alarm_name          = "${local.name_prefix}-lambda-errors"
+  alarm_description   = "Roof Signal API Lambda invocation errors (crashes, timeouts)."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  dimensions          = { FunctionName = aws_lambda_function.api.function_name }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.alarm_actions
+  tags                = local.common_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "lambda_throttles" {
+  alarm_name          = "${local.name_prefix}-lambda-throttles"
+  alarm_description   = "Roof Signal API Lambda throttles, including reserved concurrency exhaustion."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Throttles"
+  dimensions          = { FunctionName = aws_lambda_function.api.function_name }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.alarm_actions
+  tags                = local.common_tags
+}
+
+# The handler catches its own exceptions and returns HTTP 500, which the Lambda Errors metric
+# does not count, so API-level 5xx responses are alarmed separately.
+resource "aws_cloudwatch_metric_alarm" "api_5xx" {
+  alarm_name          = "${local.name_prefix}-api-5xx"
+  alarm_description   = "Roof Signal API returned HTTP 5xx responses."
+  namespace           = "AWS/ApiGateway"
+  metric_name         = "5xx"
+  dimensions          = { ApiId = aws_apigatewayv2_api.api.id, Stage = aws_apigatewayv2_stage.api.name }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_actions
+  ok_actions          = var.alarm_actions
+  tags                = local.common_tags
 }
 
 locals {
