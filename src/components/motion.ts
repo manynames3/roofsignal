@@ -62,4 +62,3 @@ export function useInView<T extends Element = HTMLElement>({ once = true, thresh
   const motion: MotionState = armed ? (inView ? "in" : "armed") : "idle";
   return { ref, inView, motion };
 }
-
