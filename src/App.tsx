@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, CSSProperties, DragEvent, FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -29,8 +29,10 @@ import {
   X
 } from "lucide-react";
 import { Brand } from "./components/Brand";
+import { useInView } from "./components/motion";
 import { demoScenarios, type DemoScenario } from "./demoData";
 import { csvCell } from "./lib/csv";
+import { assessSample, parseSampleInputs, sampleReportUrl, type SampleInputs } from "./lib/sampleAssessment";
 import {
   attachAwsPhotoStorage,
   clearAwsAuthSession,
@@ -162,121 +164,16 @@ function App() {
   return <LandingPage />;
 }
 
-function LandingPage() {
-  const [menuOpen, setMenuOpen] = useState(false);
-  return (
-    <div className="landing-shell">
-      <a className="skip-link" href="#main">Skip to content</a>
-      <header className="landing-topbar">
-        <a className="brand-lockup" href="/" aria-label="Roof Signal home">
-          <Brand />
-        </a>
-        <button className="icon-button menu-toggle" type="button" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} aria-controls="landing-navigation" onClick={() => setMenuOpen(!menuOpen)}>
-          {menuOpen ? <X size={22} /> : <Menu size={22} />}
-        </button>
-        <nav id="landing-navigation" className={`landing-nav ${menuOpen ? "is-open" : ""}`} aria-label="Landing page navigation" onClick={() => setMenuOpen(false)}>
-          <a href="#problem">The report</a>
-          <a href="#how-it-works">How it works</a>
-          <a href="#faq">FAQ</a>
-          <a className="button primary" href="/app">
-            View sample <ArrowRight size={16} />
-          </a>
-        </nav>
-      </header>
-
-      <main id="main" className="landing-main">
-        <section className="landing-hero">
-          <div className="landing-hero-copy">
-            <span className="eyebrow">Pre-appointment roof + solar readiness</span>
-            <h1>Roof Signal</h1>
-            <p className="hero-tagline">Know the roof. Lead with confidence.</p>
-            <p>
-              Turn roof photos and job details into a clear plan for the appointment.
-            </p>
-            <div className="hero-actions">
-              <a className="button primary" href="/app">
-                View sample report
-                <ArrowRight size={18} />
-              </a>
-              <a className="button ghost" href="/app?blank=1#workflow">
-                Start a blank report
-              </a>
-            </div>
-            <div className="promise-strip">
-              <CheckCircle2 size={18} />
-              <span>No account needed to explore the sample.</span>
-            </div>
-          </div>
-          <span className="hero-photo-caption">Sample roof evidence / visible shingle wear</span>
-        </section>
-
-        <section id="problem" className="landing-section product-section">
-          <div className="section-intro">
-            <div>
-              <p className="eyebrow">From evidence to next step</p>
-              <h2>The right conversation starts with the roof.</h2>
-              <p className="section-copy">Scattered photos become one report. Roof timing comes before the solar pitch.</p>
-            </div>
-            <a className="text-link" href="/app">Explore the full report <ArrowRight size={17} /></a>
-          </div>
-          <SampleReportPreview />
-        </section>
-
-        <section id="how-it-works" className="landing-section how-section">
-          <p className="eyebrow">How it works</p>
-          <h2>Arrive with a plan.</h2>
-          <div className="steps-grid">
-            <StepCard number="01" title="Bring the evidence" text="Add roof photos, age, leak history, and the homeowner's goal." />
-            <StepCard number="02" title="Review the signals" text="Confirm observations and see the inputs behind every score." />
-            <StepCard number="03" title="Lead the conversation" text="Take a clear next step and a printable report to the appointment." />
-          </div>
-        </section>
-
-        <section className="landing-section trust-section">
-          <div>
-            <p className="eyebrow">Judgment stays with you</p>
-            <h2>Clear signals.<br />No black box.</h2>
-          </div>
-          <div className="trust-grid">
-            <TrustItem icon={<ShieldCheck size={21} />} title="Scores you can explain" text="Rule-based recommendations show the evidence and inputs behind the result." />
-            <TrustItem icon={<Sparkles size={21} />} title="AI assists. You confirm." text="Optional photo suggestions stay draft evidence until the rep accepts them." />
-            <TrustItem icon={<FileText size={21} />} title="Triage, not an inspection" text="Final roof scope and solar design still need qualified professional review." />
-          </div>
-        </section>
-
-        <section className="landing-section access-section">
-          <div>
-            <p className="eyebrow">For your team</p>
-            <h2>Try the sample.<br />Then bring your next job.</h2>
-            <p>
-              Explore without an account. Request an invitation for a hosted company workspace.
-            </p>
-          </div>
-          <RequestAccessForm />
-        </section>
-
-        <section id="faq" className="landing-section faq-section">
-          <p className="eyebrow">FAQ</p>
-          <h2>A few things to know.</h2>
-          <div className="faq-grid">
-            <FaqItem title="Who is it for?" text="Residential roofing, solar, and roof + solar teams preparing for homeowner appointments." />
-            <FaqItem title="Where does my data go?" text="Local reports stay in this browser. Signed-in hosted reports use company-specific AWS storage and private photo access. Shared report links expire." />
-            <FaqItem title="What are the limits?" text="This is pre-appointment triage, not a licensed inspection or final solar design. CRM export is a CSV, not a direct integration." />
-          </div>
-        </section>
-      </main>
-      <footer className="site-footer">
-        <a className="brand-lockup" href="/" aria-label="Roof Signal home"><Brand /></a>
-        <span>Pre-appointment roof + solar readiness</span>
-        <a href="https://github.com/manynames3/roofsignal">Source & engineering documentation <ArrowRight size={14} /></a>
-      </footer>
-    </div>
-  );
+interface SampleCase {
+  scenario: DemoScenario;
+  report: ReadinessReport;
 }
 
-function SampleReportPreview() {
-  const scenario = demoScenarios.find((item) => item.id === defaultDemoScenarioId);
-  if (!scenario) return null;
+let sampleCaseCache: SampleCase | null = null;
+
+function getSampleCase(): SampleCase {
+  if (sampleCaseCache) return sampleCaseCache;
+  const scenario = demoScenarios.find((item) => item.id === defaultDemoScenarioId) ?? demoScenarios[0];
   const report = analyzeRoofReadiness({
     photos: scenario.photos,
     details: scenario.details,
@@ -285,35 +182,244 @@ function SampleReportPreview() {
     visionConfigured: false,
     visionObservationUsed: false
   });
-  const theme = statusTheme[report.recommendation.status];
+  sampleCaseCache = { scenario, report };
+  return sampleCaseCache;
+}
+
+function LandingPage() {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const sentinelRef = useRef<HTMLSpanElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const sample = getSampleCase();
+  const stepsView = useInView<HTMLDivElement>();
+  const trustView = useInView<HTMLDivElement>();
+  const hostedAvailable = isAwsBackendConfigured();
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setScrolled(!entry.isIntersecting));
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMenuOpen(false);
+      toggleRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [menuOpen]);
 
   return (
-    <div className="sample-preview">
-      <figure className="sample-preview-photos">
-        {scenario.photos.slice(1, 2).map((photo) => (
-          <img key={photo.id} src={photo.previewUrl} alt={scenario.photoEvidence.find((item) => item.photoId === photo.id)?.caption || photo.fileName} loading="lazy" width="640" height="360" />
-        ))}
-        <figcaption>Sample roof evidence</figcaption>
-      </figure>
-      <div className="sample-preview-report">
-        <p className="sample-preview-label"><FileText size={16} />Sample report / fictional job details</p>
-        <span className={`status-badge ${theme.tone}`}>{theme.icon}{report.recommendation.label}</span>
-        <h3>{homeownerNextStep(report.recommendation.status)}</h3>
-        <dl className="sample-preview-scores">
-          <div><dt>Roof risk</dt><dd>{report.scores.totalRisk}<small>/100</small></dd></div>
-          <div><dt>Solar readiness</dt><dd>{report.scores.solarReadiness}<small>/100</small></dd></div>
-          <div><dt>Data complete</dt><dd>{report.scores.dataCompleteness}<small>/100</small></dd></div>
+    <div className="landing-shell">
+      <a className="skip-link" href="#main">Skip to content</a>
+      <span className="top-sentinel" ref={sentinelRef} aria-hidden="true" />
+      <header className={`landing-topbar ${scrolled ? "is-scrolled" : ""}`}>
+        <a className="brand-lockup" href="/" aria-label="Roof Signal home">
+          <Brand />
+        </a>
+        <button ref={toggleRef} className="icon-button menu-toggle" type="button" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} aria-controls="landing-navigation" onClick={() => setMenuOpen(!menuOpen)}>
+          {menuOpen ? <X size={22} /> : <Menu size={22} />}
+        </button>
+        <nav id="landing-navigation" className={`landing-nav ${menuOpen ? "is-open" : ""}`} aria-label="Landing page navigation" onClick={() => setMenuOpen(false)}>
+          <a href="#problem">The report</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#faq">FAQ</a>
+          <a className="button primary" href="/app">
+            Open sample <ArrowRight size={16} />
+          </a>
+        </nav>
+      </header>
+
+      <main id="main" className="landing-main">
+        <EvidenceHero />
+
+        <section id="problem" className="landing-section product-section">
+          <SampleReportPreview sample={sample} />
+        </section>
+
+        <section id="how-it-works" className="landing-section how-section">
+          <div className="wrap">
+            <p className="eyebrow">How it works</p>
+            <h2>Ready for the conversation.</h2>
+            <div className="steps-grid" ref={stepsView.ref} data-motion={stepsView.motion}>
+              <StepCard number="01" title="Add the job" text="Roof photos, age, leak history and the homeowner's goal." index={0} />
+              <StepCard number="02" title="Confirm the evidence" text="Tag the visible conditions. Keep judgment with the rep." index={1} />
+              <StepCard number="03" title="Bring the next step" text="A homeowner-ready report, with print and CSV export." index={2} />
+            </div>
+          </div>
+        </section>
+
+        <section className="landing-section trust-section">
+          <div className="wrap trust-layout">
+            <div>
+              <p className="eyebrow">Built for a defensible call</p>
+              <h2>Nothing hidden in the score.</h2>
+            </div>
+            <div className="trust-grid" ref={trustView.ref} data-motion={trustView.motion}>
+              <TrustItem icon={<ShieldCheck size={21} />} title="Readable rules" text="Every score traces back to provided inputs and confirmed observations." index={0} />
+              <TrustItem icon={<Sparkles size={21} />} title="AI drafts. You confirm." text="Optional Gemini photo suggestions stay drafts until the rep accepts them." index={1} />
+              <TrustItem icon={<FileText size={21} />} title="Triage, not an inspection" text="Not a licensed inspection, roof measurement, final solar design or permitting review." index={2} />
+            </div>
+          </div>
+        </section>
+
+        <section className="landing-section access-section">
+          <div className={`wrap access-layout ${hostedAvailable ? "" : "local-access"}`}>
+            <div>
+              <p className="eyebrow">The next appointment</p>
+              <h2>Start with a clearer roof conversation.</h2>
+              <p>
+                {hostedAvailable ? "Explore the sample. Hosted company workspaces are available by invitation." : "Explore a sample report or assess a roof with your own photos. No account needed."}
+              </p>
+            </div>
+            {hostedAvailable ? <RequestAccessForm /> : <div className="access-demo-actions">
+              <a className="button primary" href="/app">See sample report <ArrowRight size={18} /></a>
+              <a className="text-link" href="/app?blank=1#workflow">Start a report <ArrowRight size={17} /></a>
+            </div>}
+          </div>
+        </section>
+
+        <section id="faq" className="landing-section faq-section">
+          <div className="wrap">
+            <p className="eyebrow">FAQ</p>
+            <h2>Before you try it.</h2>
+            <div className="faq-grid">
+              <FaqItem title="Who is it for?" text="Residential roofing and solar reps who need to turn roof photos and job details into a consistent homeowner-ready report before an appointment." />
+              <FaqItem title="Does it write the report for me?" text="Roof Signal assembles the recommendation, confirmed photo evidence, and next steps from your inputs. You still collect the photos, confirm the conditions, and review the result before printing or exporting." />
+              <FaqItem title="Is the score AI?" text="No. Scores are rule-based from the inputs on the report. Optional Gemini photo suggestions are drafts and only count once a rep confirms them." />
+              <FaqItem title="Where does my data go?" text="Local reports stay in this browser. Signed-in hosted reports use company-specific AWS storage and private photo access. Shared report links expire." />
+              <FaqItem title="What are the limits?" text="This is pre-appointment triage, not a licensed inspection or final solar design. CRM export is a CSV, not a direct integration." />
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer className="site-footer">
+        <a className="brand-lockup" href="/" aria-label="Roof Signal home"><Brand /></a>
+        <span>Pre-appointment roof + solar triage</span>
+        <a href="https://github.com/manynames3/roofsignal">Source & engineering documentation <ArrowRight size={14} /></a>
+      </footer>
+    </div>
+  );
+}
+
+function EvidenceHero() {
+  return (
+    <section className="landing-hero">
+      <div className="hero-copy">
+        <p className="hero-eyebrow">For roofing + solar reps</p>
+        <h1 className="hero-tagline">From roof photos to a homeowner-ready report.</h1>
+        <p className="hero-body">Add job details and confirm visible conditions. Get the recommendation, photo evidence, and next steps in one report, ready to print or export.</p>
+        <div className="hero-actions">
+          <a className="button primary" href="/app?blank=1#workflow">Create a report <ArrowRight size={18} /></a>
+          <a className="text-link" href="#problem">Try live sample <ArrowRight size={17} /></a>
+        </div>
+        <p className="promise-strip"><CheckCircle2 size={16} />Sample report. No account needed.</p>
+      </div>
+    </section>
+  );
+}
+
+function SampleReportPreview({ sample }: { sample: SampleCase }) {
+  const { scenario } = sample;
+  const { solarAssumptions, photos, photoEvidence } = scenario;
+  const [inputs, setInputs] = useState<SampleInputs>({ roofAgeYears: scenario.details.roofAgeYears ?? 0, knownLeaks: scenario.details.knownLeaks });
+  const { details, report } = useMemo(() => assessSample(scenario, inputs), [scenario, inputs]);
+  const fullReportUrl = sampleReportUrl(inputs);
+  const theme = statusTheme[report.recommendation.status];
+  const view = useInView<HTMLDivElement>();
+  const previewPhotos = photos.slice(1, 3);
+  const scoreLines = [
+    { label: "Roof risk", value: report.scores.totalRisk, original: sample.report.scores.totalRisk, tone: "risk" },
+    { label: "Solar readiness", value: report.scores.solarReadiness, original: sample.report.scores.solarReadiness, tone: "positive" },
+    { label: "Data complete", value: report.scores.dataCompleteness, original: sample.report.scores.dataCompleteness, tone: "positive" }
+  ];
+
+  return (
+    <div className="sample-overview wrap" ref={view.ref} data-motion={view.motion}>
+      <div className="sample-controls">
+        <div className="sample-controls-head">
+          <h2>Explore a sample report</h2>
+          <button className="icon-button" type="button" aria-label="Reset sample inputs" title="Reset sample inputs" onClick={() => setInputs({ roofAgeYears: scenario.details.roofAgeYears ?? 0, knownLeaks: scenario.details.knownLeaks })}><RotateCcw size={18} /></button>
+        </div>
+        <div className="sample-control-fields">
+          <label className="sample-age-field" htmlFor="sample-roof-age">
+            <span>Roof age <output htmlFor="sample-roof-age">{inputs.roofAgeYears} years</output></span>
+            <input id="sample-roof-age" type="range" min="0" max="40" step="1" value={inputs.roofAgeYears} aria-valuetext={`${inputs.roofAgeYears} years`} onChange={(event) => { const roofAgeYears = Number(event.currentTarget.value); setInputs((current) => ({ ...current, roofAgeYears })); }} />
+          </label>
+          <label className="field" htmlFor="sample-leaks"><span>Leak history</span><select id="sample-leaks" value={inputs.knownLeaks} onChange={(event) => { const knownLeaks = event.currentTarget.value as KnownStatus; setInputs((current) => ({ ...current, knownLeaks })); }}><option value="yes">Reported</option><option value="no">None reported</option><option value="unknown">Unknown</option></select></label>
+        </div>
+        <p className="sample-control-note">Sample photos and confirmed conditions stay fixed. Nothing is saved.</p>
+      </div>
+      <div className="sample-decision">
+        <p className="sample-preview-label"><FileText size={16} />Sample assessment</p>
+        <p className="sr-only" role="status" aria-atomic="true">{formatRecommendationStatus(report.recommendation.status)}. Roof risk {report.scores.totalRisk} out of 100. Confidence {report.recommendation.confidence}.</p>
+        <div className="decision-head">
+          <span className={`status-badge ${theme.tone}`}>{theme.icon}{formatRecommendationStatus(report.recommendation.status)}</span>
+          <span className="decision-confidence">Confidence <b>{report.recommendation.confidence}</b></span>
+        </div>
+        <h2 className="sample-recommendation">{report.recommendation.label}</h2>
+        <dl className="sample-inputs" aria-label="Sample job inputs">
+          <div><dt>Roof age</dt><dd>{details.roofAgeYears} years</dd></div>
+          <div><dt>Leak history</dt><dd>{details.knownLeaks === "yes" ? "Reported" : details.knownLeaks === "no" ? "None reported" : "Unknown"}</dd></div>
+          <div><dt>Photo evidence</dt><dd>{photos.length} photos</dd></div>
         </dl>
-        <p className="sample-preview-note">Based on {scenario.photos.length} photos and provided job details. Final scope requires a qualified roof professional.</p>
-        <a className="text-link" href={`/app?demo=${scenario.id}#report`}>See the evidence behind the scores <ArrowRight size={17} /></a>
+        <p className="sample-next"><span>Next step</span>{homeownerNextStep(report.recommendation.status)}</p>
+        <div className="sample-why">
+          <h3>Why this recommendation</h3>
+          <p>{report.roofRiskFactors[0]}</p>
+          <p className="sample-calculation">Total roof risk {report.scores.totalRisk}/100. Component risk scores: age {report.scores.roofAgeRisk}/100, confirmed conditions {report.scores.visibleConditionRisk}/100, and leaks {report.scores.leakRisk}/100.</p>
+          <p>{report.recommendation.confidenceRationale}</p>
+        </div>
+        <a className="text-link sample-open-report" href={fullReportUrl}>Open this sample report <ArrowRight size={17} /></a>
+      </div>
+      <div className="sample-evidence">
+        <div className="evidence-grid">
+          {previewPhotos.map((photo, index) => {
+            const evidence = photoEvidence.find((item) => item.photoId === photo.id);
+            return (
+              <figure key={photo.id}>
+                <div className="evidence-photo">
+                  <img src={photo.previewUrl} alt={evidence?.caption || photo.fileName} width="960" height="540" decoding="async" />
+                </div>
+                <figcaption><span className="evidence-view">{index === 0 ? "Roof slope" : "Roof edge"}</span>{evidence?.caption || photo.fileName}</figcaption>
+              </figure>
+            );
+          })}
+        </div>
+        <div className="evidence-footer">
+          <span className="evidence-source">Rep-tagged sample evidence</span>
+          <a className="text-link" href={fullReportUrl}>See all {photos.length} photos <ArrowRight size={16} /></a>
+        </div>
+      </div>
+      <div className="sample-context">
+        <ul className="sample-scores">
+          {scoreLines.map((line, index) => (
+            <li key={line.label} style={{ "--v": line.value / 100, "--i": index } as CSSProperties}>
+              <span className="sample-score-name">{line.label}</span>
+              <b>{line.value}<small>/100</small></b>
+              <span className="sample-score-change">{line.value !== line.original ? `Originally ${line.original}` : ""}</span>
+              <span className="sample-score-track" aria-hidden="true"><i className={line.tone} /></span>
+            </li>
+          ))}
+        </ul>
+        <p className="sample-assumptions">
+          Solar assumptions: {solarAssumptions.usableRoofAreaSqft?.toLocaleString()} sq ft usable, {roofOrientationLabels[solarAssumptions.roofOrientation].toLowerCase()}-facing, {shadeLevelLabels[solarAssumptions.shadeLevel].toLowerCase()}.
+        </p>
+        <p className="sample-limit">Pre-appointment triage. Final scope requires a qualified roof professional.</p>
       </div>
     </div>
   );
 }
 
-function StepCard({ number, title, text }: { number: string; title: string; text: string }) {
+function StepCard({ number, title, text, index }: { number: string; title: string; text: string; index: number }) {
   return (
-    <article className="step-card">
+    <article className="step-card" style={{ "--i": index } as CSSProperties}>
       <span>{number}</span>
       <h3>{title}</h3>
       <p>{text}</p>
@@ -321,9 +427,9 @@ function StepCard({ number, title, text }: { number: string; title: string; text
   );
 }
 
-function TrustItem({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
+function TrustItem({ icon, title, text, index }: { icon: ReactNode; title: string; text: string; index: number }) {
   return (
-    <article className="trust-item">
+    <article className="trust-item" style={{ "--i": index } as CSSProperties}>
       {icon}
       <div>
         <h3>{title}</h3>
@@ -398,7 +504,7 @@ function RequestAccessForm() {
           Request hosted pilot
         </button>
         <a className="button secondary" href="/app">
-          Launch demo
+          Open sample report
         </a>
       </div>
       {!awsReady ? <p className="form-note">Hosted access requests are unavailable in this demo. The sample report is available now.</p> : null}
@@ -418,6 +524,7 @@ function ReadinessApp() {
   const [reportStale, setReportStale] = useState(false);
   const [activeView, setActiveView] = useState<"workflow" | "report" | "workspace">("workflow");
   const [sharedView] = useState(() => Boolean(new URLSearchParams(window.location.search).get("share")));
+  const [sampleInputs] = useState(() => parseSampleInputs(new URLSearchParams(window.location.search)));
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [activeDemoScenarioId, setActiveDemoScenarioId] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string>("");
@@ -452,6 +559,13 @@ function ReadinessApp() {
     const reports = loadSavedReports();
     const profile = loadCompanyProfile();
     const params = new URLSearchParams(window.location.search);
+    // Sample overrides are a one-time handoff, never saved/share/report overrides.
+    if (params.has("sampleAge") || params.has("sampleLeaks")) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("sampleAge");
+      url.searchParams.delete("sampleLeaks");
+      window.history.replaceState({}, "", url);
+    }
     const reportId = params.get("report");
     const shareId = params.get("share");
     const demoId = params.get("demo");
@@ -475,6 +589,7 @@ function ReadinessApp() {
           companyOverride: profile,
           generateReport: true,
           updateUrl: false,
+          sampleInputs,
           message: "Signed in. Cloud reports are loading; demo report shown for the walkthrough."
         });
       }
@@ -494,6 +609,7 @@ function ReadinessApp() {
         companyOverride: profile,
         generateReport: true,
         updateUrl: Boolean(demoId),
+        sampleInputs: !reportId && (!demoId || demoId === defaultDemoScenarioId) ? sampleInputs : undefined,
         message: "Sample report loaded."
       });
     }
@@ -799,6 +915,7 @@ function ReadinessApp() {
       companyOverride?: CompanyProfile;
       generateReport?: boolean;
       updateUrl?: boolean;
+      sampleInputs?: SampleInputs;
       message?: string;
     } = {}
   ) {
@@ -813,6 +930,7 @@ function ReadinessApp() {
     });
 
     const demoDetails = clonePropertyDetails(scenario.details);
+    if (options.sampleInputs) Object.assign(demoDetails, options.sampleInputs);
     const demoPhotos = scenario.photos.map((photo) => ({ ...photo }));
     const demoEvidence = syncPhotoEvidenceForPhotos(
       demoPhotos,
@@ -1126,15 +1244,16 @@ function ReadinessApp() {
         </div>
       </header>
 
-      <main id="workspace-main">
-        <div className="workspace-heading">
-          <div><p className="eyebrow">Roof + solar readiness</p><h2>{activeView === "report" ? "Report" : activeView === "workflow" ? "Job details" : "Workspace"}</h2></div>
+      <main id="workspace-main" className={activeView === "report" ? "report-first" : undefined}>
+        <div className="workspace-heading" hidden={activeView === "report"}>
+          <div><p className="eyebrow">Roof + solar triage</p><h2>{activeView === "report" ? "Report" : activeView === "workflow" ? "Job details" : "Workspace"}</h2></div>
           <button className="button secondary compact-button" type="button" onClick={startBlankReport}><ImagePlus size={17} />New report</button>
         </div>
         <nav className="workspace-navigation" aria-label="Workspace views">
           <button type="button" aria-pressed={activeView === "report"} onClick={() => setActiveView("report")}><FileText size={17} />Report{reportStale ? <span className="change-dot" aria-label="Inputs changed" /> : null}</button>
           <button type="button" aria-pressed={activeView === "workflow"} onClick={() => setActiveView("workflow")}><ClipboardCheck size={17} />Job details</button>
           <button type="button" aria-pressed={activeView === "workspace"} onClick={() => setActiveView("workspace")}><FolderOpen size={17} />Workspace</button>
+          {activeView === "report" ? <button className="button secondary compact-button new-report-command" type="button" onClick={startBlankReport} aria-label="New report" title="New report"><ImagePlus size={17} /><span>New report</span></button> : null}
         </nav>
 
         {isDemoMode && activeDemoScenario && activeView === "report" ? (
@@ -1146,7 +1265,7 @@ function ReadinessApp() {
           />
         ) : null}
 
-        {notice ? <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} /> : null}
+        {notice && !(isDemoMode && activeView === "report" && notice.type === "success" && notice.message === "Sample report loaded.") ? <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} /> : null}
 
         <div hidden={activeView !== "workspace"}>
         <div className="kpi-panel workspace-metrics" aria-label="Saved report summary">
@@ -1377,22 +1496,14 @@ function DemoModePanel({
   onReload: () => void;
 }) {
   return (
-    <section className="demo-mode-panel" aria-label="Guided demo status">
+    <section className="demo-mode-panel" aria-label="Guided sample status">
       <div className="demo-mode-copy">
-        <span className="eyebrow">Sample case / fictional details</span>
-        <h2>{scenario.label}</h2>
-        <div className="demo-facts" aria-label="Demo facts">
-          <span>{scenario.details.roofAgeYears ?? "Unknown"} year roof</span>
-          <span>{roofMaterialLabels[scenario.details.roofMaterial]}</span>
-          <span>Leaks: {scenario.details.knownLeaks}</span>
-          <span>{desiredOutcomeLabels[scenario.details.desiredOutcome]}</span>
-        </div>
+        <span className="sample-context-label">Sample assessment</span>
       </div>
       <div className="demo-mode-actions">
-        <label className="field sample-case-field"><span>Sample case</span><select value={scenario.id} onChange={(event) => onApply(event.target.value)}>{demoScenarios.map((sample) => <option key={sample.id} value={sample.id}>{sample.label}</option>)}</select></label>
-        <button className="button secondary" type="button" onClick={onJumpWorkflow}>
+        <label className="field sample-case-field"><span className="sr-only">Sample case</span><select value={scenario.id} onChange={(event) => onApply(event.target.value)}>{demoScenarios.map((sample) => <option key={sample.id} value={sample.id}>{sample.label}</option>)}</select></label>
+        <button className="icon-button" type="button" onClick={onJumpWorkflow} title="Review inputs" aria-label="Review inputs">
           <ClipboardCheck size={17} />
-          Review inputs
         </button>
         <button className="icon-button" type="button" onClick={onReload} title="Reset sample" aria-label="Reset sample">
           <RotateCcw size={17} />
@@ -1945,33 +2056,55 @@ function ReportSection({
     <section id="report" className="report-shell">
       <div className="report-toolbar">
         <div>
-          <p className="eyebrow">Generated readiness report</p>
+          <p className="eyebrow">Roof + solar readiness</p>
           <h2>{details.homeownerName || "Homeowner"} - {details.propertyAddress || "Address pending"}</h2>
-        </div>
-        <div className="toolbar-actions">
-          {!readOnly ? <>
-          <button className="button secondary" type="button" onClick={onCopy} disabled={stale}>
-            <Clipboard size={17} />
-            Copy summary
-          </button>
-          <button className="button secondary" type="button" onClick={onCopyLink} disabled={stale}>
-            <Share2 size={17} />
-            {shareLabel}
-          </button>
-          <button className="button secondary" type="button" onClick={onExportCrm} disabled={isExportingCrm || stale}>
-            {isExportingCrm ? <Loader2 size={17} className="spin" /> : <FileDown size={17} />}
-            CRM CSV
-          </button>
-          </> : null}
-          <button className="button secondary" type="button" onClick={() => window.print()} disabled={stale}>
-            <Printer size={17} />
-            Print report
-          </button>
         </div>
       </div>
 
       <article className="report-card">
-        {savedReport.sample || savedReport.id.startsWith("demo-") ? <p className="sample-label">Sample report / fictional homeowner and company details</p> : null}
+        {savedReport.sample || savedReport.id.startsWith("demo-") ? <p className="sample-label">Sample report</p> : null}
+
+        <section id="report-decision" className="report-part report-decision" aria-labelledby="report-decision-title">
+          <ReportPartLabel id="report-decision-title" number="01" title="Decision" note="The call, and how sure it is." />
+          <div className="report-part-body">
+            <div className="report-hero">
+              <div>
+                <span className={`status-badge ${theme.tone}`}>
+                  {theme.icon}
+                  {formatRecommendationStatus(report.recommendation.status)}
+                </span>
+                <h3>{report.recommendation.label}</h3>
+                <p>Based on provided job details and confirmed observations. Final scope requires a qualified roof professional.</p>
+              </div>
+              <div className="confidence-card">
+                <span>Confidence</span>
+                <strong>{report.recommendation.confidence}</strong>
+                <p>{report.recommendation.confidenceRationale}</p>
+              </div>
+            </div>
+
+            <div className="report-meta">
+              <span>{report.assessmentMode === "vision-assisted" ? "Vision-assisted" : "Rule-based from provided inputs"}</span>
+              <span>{savedReport.photoCount} photo{savedReport.photoCount === 1 ? "" : "s"} referenced</span>
+              <span>Generated {formatDate(savedReport.createdAt)}</span>
+            </div>
+          </div>
+        </section>
+
+        <nav className="report-index" aria-label="Report sections">
+          <a href="#report-decision"><span>01</span>Decision</a>
+          <a href="#report-evidence"><span>02</span>Evidence</a>
+          <a href="#report-assumptions"><span>03</span>Assumptions</a>
+          <a href="#report-next-step"><span>04</span>Next step</a>
+        </nav>
+        <div className="toolbar-actions report-actions" aria-label="Report actions">
+          {!readOnly ? <>
+            <button className="button secondary" type="button" onClick={onCopy} disabled={stale}><Clipboard size={17} />Copy summary</button>
+            <button className="button secondary" type="button" onClick={onCopyLink} disabled={stale}><Share2 size={17} />{shareLabel}</button>
+            <button className="button secondary" type="button" onClick={onExportCrm} disabled={isExportingCrm || stale}>{isExportingCrm ? <Loader2 size={17} className="spin" /> : <FileDown size={17} />}CRM CSV</button>
+          </> : null}
+          <button className="button secondary" type="button" onClick={() => window.print()} disabled={stale}><Printer size={17} />Print report</button>
+        </div>
         <header className="report-brand">
           <div>
             <span>{company.companyName || "Company name pending"}</span>
@@ -1984,42 +2117,48 @@ function ReportSection({
           </div>
         </header>
 
-        <div className="report-hero">
-          <div>
-            <span className={`status-badge ${theme.tone}`}>
-              {theme.icon}
-              {report.recommendation.label}
-            </span>
-            <h3>{homeownerNextStep(report.recommendation.status)}</h3>
-            <p>Based on provided job details and confirmed observations. Final scope requires a qualified roof professional.</p>
+        <section id="report-evidence" className="report-part" aria-labelledby="report-evidence-title">
+          <ReportPartLabel id="report-evidence-title" number="02" title="Evidence" note="Scores, photos and the rules behind them." />
+          <div className="report-part-body">
+            <ScoreBoard scores={report.scores} />
+
+            <div className="report-grid">
+              <ReportBlock title="Key observations" items={report.keyObservations} />
+              <ReportBlock title="Roof risk factors" items={report.roofRiskFactors} />
+            </div>
+
+            <PhotoEvidenceReport evidence={report.photoEvidence ?? []} analysis={report.photoAnalysis ?? []} />
+
+            <AnalysisTraceReport report={report} />
           </div>
-          <div className="confidence-card">
-            <span>Confidence</span>
-            <strong>{report.recommendation.confidence}</strong>
-            <p>{report.recommendation.confidenceRationale}</p>
+        </section>
+
+        <section id="report-assumptions" className="report-part" aria-labelledby="report-assumptions-title">
+          <ReportPartLabel id="report-assumptions-title" number="03" title="Assumptions" note="What the solar view takes as given." />
+          <div className="report-part-body">
+            <SolarOpportunityReport estimate={report.solarOpportunity} />
+
+            <div className="report-grid">
+              <ReportBlock title="Solar readiness factors" items={report.solarReadinessFactors} />
+            </div>
           </div>
-        </div>
+        </section>
 
-        <div className="report-meta">
-          <span>{report.assessmentMode === "vision-assisted" ? "Vision-assisted" : "Rule-based from provided inputs"}</span>
-          <span>{savedReport.photoCount} photo{savedReport.photoCount === 1 ? "" : "s"} referenced</span>
-          <span>Generated {formatDate(savedReport.createdAt)}</span>
-        </div>
+        <section id="report-next-step" className="report-part" aria-labelledby="report-next-step-title">
+          <ReportPartLabel id="report-next-step-title" number="04" title="Next step" note="What to do, and what to ask." />
+          <div className="report-part-body">
+            <div className="next-action">
+              <div>
+                <p className="eyebrow">Next step</p>
+                <h3>{homeownerNextStep(report.recommendation.status)}</h3>
+              </div>
+            </div>
 
-        <ScoreBoard scores={report.scores} />
-
-        <AnalysisTraceReport report={report} />
-
-        <SolarOpportunityReport estimate={report.solarOpportunity} />
-
-        <div className="report-grid">
-          <ReportBlock title="Key observations" items={report.keyObservations} />
-          <ReportBlock title="Roof risk factors" items={report.roofRiskFactors} />
-          <ReportBlock title="Solar readiness factors" items={report.solarReadinessFactors} />
-          <ReportBlock title="Questions to ask homeowner" items={report.questionsToAsk} />
-        </div>
-
-        <PhotoEvidenceReport evidence={report.photoEvidence ?? []} analysis={report.photoAnalysis ?? []} />
+            <div className="report-grid">
+              <ReportBlock title="Questions to ask homeowner" items={report.questionsToAsk} />
+            </div>
+          </div>
+        </section>
 
         {!readOnly ? <details className="rep-briefing internal-only">
           <summary><BriefcaseBusiness size={18} />Rep briefing <span>Internal / excluded from print and shared reports</span></summary>
@@ -2033,18 +2172,21 @@ function ReportSection({
           </div>
         </details> : null}
 
-        <section className="next-action">
-          <div>
-            <p className="eyebrow">Next step</p>
-            <h3>{homeownerNextStep(report.recommendation.status)}</h3>
-          </div>
-        </section>
-
         <p className="disclaimer">{report.disclaimer}</p>
         {company.licenseNote ? <p className="company-note">{company.licenseNote}</p> : null}
         <div className="report-colophon"><span className="brand-lockup"><Brand /></span><span>Pre-appointment readiness</span></div>
       </article>
     </section>
+  );
+}
+
+function ReportPartLabel({ id, number, title, note }: { id: string; number: string; title: string; note: string }) {
+  return (
+    <div className="report-part-label">
+      <span>{number}</span>
+      <h2 id={id}>{title}</h2>
+      <p>{note}</p>
+    </div>
   );
 }
 
@@ -2112,11 +2254,11 @@ function ReportPlaceholder({ visionConfigured }: { visionConfigured: boolean }) 
           <FileDown size={20} />
         </div>
         <div>
-          <p className="eyebrow">Readiness report</p>
-          <h2>Complete the job details, confirm limitations, and generate a saved homeowner-ready report.</h2>
+          <p className="eyebrow">No report yet</p>
+          <h2>Add the job details, confirm the limits, then generate the report.</h2>
           <p>
-            The report will include transparent scores, photo evidence, homeowner questions, next action, branded print export,
-            copyable summary, local history, and the required pre-appointment disclaimer.
+            You will get the decision, the evidence and scores behind it, the assumptions, and a next step with questions for the homeowner.
+            It prints, copies and exports to CSV, and carries the pre-appointment disclaimer.
           </p>
           <span className="pill muted">
             {visionConfigured ? "Vision flag enabled - confirmation required" : "Rule-based report - Gemini suggestions optional"}
@@ -2235,14 +2377,14 @@ function ScoreBoard({ scores }: { scores: RoofRiskScores }) {
 
   return (
     <section className="score-board">
-      {scoreItems.map((item) => (
-        <div className="score-item" key={item.label}>
+      {scoreItems.map((item, index) => (
+        <div className="score-item" key={item.label} style={{ "--i": index } as CSSProperties}>
           <div className="score-label">
             <span>{item.label}</span>
             <strong>{item.value}</strong>
           </div>
           <div className="score-track">
-            <span className={item.polarity === "positive" ? "positive" : "risk"} style={{ width: `${item.value}%` }} />
+            <span className={item.polarity === "positive" ? "positive" : "risk"} style={{ "--v": Math.min(Math.max(item.value, 0), 100) / 100 } as CSSProperties} />
           </div>
         </div>
       ))}
